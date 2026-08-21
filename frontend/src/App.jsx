@@ -1,12 +1,17 @@
-import Dashboard from './components/Dashboard'
-import './App.css'
+import { Routes, Route } from 'react-router'
+import Home from './pages/Home'
+import Login from './pages/Login'
+import Dashboard from './pages/Dashboard'
+import Submit from './pages/Submit'
 
 function App() {
-
   return (
-    <div className="h-screen bg-gradient-to-b from-gray-300 to-black">
-      <Dashboard />
-    </div>
+    <Routes>
+      <Route path="/" element={<Home />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/submit" element={<Submit />} />
+    </Routes>
   )
 }
 

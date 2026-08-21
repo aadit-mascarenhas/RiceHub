@@ -1,0 +1,119 @@
+import { useState } from 'react'
+import Layout from '../components/Layout'
+import DashboardCard from '../components/DashboardCard'
+import SavedRiceCard from '../components/SavedRiceCard'
+import SubmitRiceCard from '../components/SubmitRiceCard'
+import { mockRices } from '../data/mockRices'
+
+export default function Dashboard() {
+  const [tab, setTab] = useState('my-rices')
+
+  const myRices = mockRices
+  const savedRices = mockRices.slice(0, 2)
+
+  return (
+    <Layout>
+      <div className="relative overflow-hidden bg-surface-container-highest px-4 py-12 lg:px-12">
+        <div className="absolute -right-24 -top-24 h-96 w-96 rounded-full bg-primary/5 blur-[100px]" />
+        <div className="absolute -bottom-32 -left-32 h-96 w-96 rounded-full bg-terminal-green/5 blur-[120px]" />
+        <div className="relative z-10 flex flex-col items-start justify-between gap-6 md:flex-row md:items-end">
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-3">
+              <span className="font-mono text-sm text-terminal-green">
+                usr@ricehub:~
+              </span>
+              <span className="cursor-blink h-4 w-2 bg-terminal-green" />
+            </div>
+            <h1 className="font-display text-4xl font-bold uppercase tracking-tighter text-on-surface lg:text-5xl">
+              Command Center
+            </h1>
+            <p className="mt-4 max-w-2xl text-lg text-on-surface-variant">
+              Manage your configurations, track submission status, and organize
+              your saved inspirations.
+            </p>
+          </div>
+          <div className="flex gap-4">
+            <div className="border-l-2 border-terminal-green bg-surface-container px-6 py-4">
+              <span className="mb-1 block font-mono text-xs uppercase text-on-surface-variant">
+                TOTAL VIEWS
+              </span>
+              <span className="font-display text-2xl font-bold text-on-surface">
+                14,204
+              </span>
+            </div>
+            <div className="border-l-2 border-primary bg-surface-container px-6 py-4">
+              <span className="mb-1 block font-mono text-xs uppercase text-on-surface-variant">
+                UPVOTES
+              </span>
+              <span className="font-display text-2xl font-bold text-on-surface">
+                892
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="sticky top-20 z-40 border-b-2 border-outline-variant bg-background px-4 lg:px-12">
+        <div className="flex gap-8">
+          {[
+            { key: 'my-rices', label: 'My Rices' },
+            { key: 'saved-rices', label: 'Saved Rices' },
+          ].map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`relative py-6 font-mono text-xs uppercase tracking-widest transition-colors ${
+                tab === t.key ? 'text-on-surface' : 'text-on-surface-variant hover:text-on-surface'
+              }`}
+            >
+              {t.label}
+              <span
+                className={`absolute bottom-0 left-0 h-[3px] w-full bg-terminal-green transition-transform origin-left ${
+                  tab === t.key ? 'scale-x-100' : 'scale-x-0'
+                }`}
+              />
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="px-4 py-12 lg:px-12">
+        {tab === 'my-rices' && (
+          <section>
+            <div className="mb-8 flex items-center justify-between border-b border-outline-variant pb-4">
+              <span className="font-mono text-sm text-on-surface-variant">
+                {myRices.length} UPLOADS DETECTED
+              </span>
+              <select className="cursor-pointer border-none bg-transparent font-mono text-sm text-on-surface outline-none">
+                <option>SORT: RECENT</option>
+                <option>SORT: POPULAR</option>
+                <option>SORT: STATUS</option>
+              </select>
+            </div>
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {myRices.map((rice) => (
+                <DashboardCard key={rice.id} rice={rice} />
+              ))}
+              <SubmitRiceCard />
+            </div>
+          </section>
+        )}
+
+        {tab === 'saved-rices' && (
+          <section>
+            <div className="mb-8 flex items-center justify-between border-b border-outline-variant pb-4">
+              <span className="font-mono text-sm text-on-surface-variant">
+                {savedRices.length} SAVED CONFIGS
+              </span>
+            </div>
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {savedRices.map((rice) => (
+                <SavedRiceCard key={rice.id} rice={rice} />
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
+    </Layout>
+  )
+}

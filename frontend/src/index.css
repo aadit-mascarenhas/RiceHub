@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+@theme {
+  /* Fonts */
+  --font-display: "Space Grotesk", sans-serif;
+  --font-body: "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  /* Base surfaces (dark) */
+  --color-background: #0e0e0e;
+  --color-surface: #131313;
+  --color-surface-container-lowest: #0e0e0e;
+  --color-surface-container-low: #1c1b1b;
+  --color-surface-container: #201f1f;
+  --color-surface-container-high: #2a2a2a;
+  --color-surface-container-highest: #353534;
+  --color-surface-bright: #393939;
+
+  /* Text */
+  --color-on-surface: #e5e2e1;
+  --color-on-surface-variant: #cfc4c5;
+  --color-outline: #988e90;
+  --color-outline-variant: #4c4546;
+
+  /* Brand accents */
+  --color-terminal-green: #00ff41;
+  --color-neon-cyan: #00f0ff;
+  --color-warning-orange: #ff4d06;
+
+  /* Primary (white-ish buttons / active) */
+  --color-primary: #c6c6c6;
+  --color-on-primary: #303030;
+
+  /* Semantic */
+  --color-error: #ffb4ab;
+  --color-muted-gray: #a1a1aa;
+
+  /* Shadows */
+  --shadow-hard: 4px 4px 0px #ffffff;
+  --shadow-hard-green: 4px 4px 0px #00ff41;
+  --shadow-hard-sm: 2px 2px 0px #ffffff;
+  --shadow-hard-green-sm: 2px 2px 0px #00ff41;
+
+  /* Layout */
+  --container-page: 1200px;
+}
+
+/* Shared card hover effect: lift up-left with a colored hard shadow */
+@utility card-lift-green {
+  transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  &:hover {
+    transform: translate(-4px, -4px);
+    border-color: var(--color-terminal-green);
+    box-shadow: var(--shadow-hard-green);
+  }
+}
+
+@utility card-lift-white {
+  transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  &:hover {
+    transform: translate(-4px, -4px);
+    border-color: var(--color-primary);
+    box-shadow: var(--shadow-hard);
+  }
+}
+
+/* Base */
+html {
+  scrollbar-width: thin;
+}
+
+body {
+  background-color: var(--color-surface);
+  color: var(--color-on-surface);
+  font-family: var(--font-body);
+  overscroll-behavior: none;
+}
+
+/* Terminal-style blinking cursor */
+.cursor-blink {
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
