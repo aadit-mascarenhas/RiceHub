@@ -4,7 +4,6 @@ import FormField from '../components/form/FormField'
 import TextField from '../components/form/TextField'
 import SelectField from '../components/form/SelectField'
 import useForm from '../hooks/useForm'
-
 const initialValues = {
   title: '',
   description: '',
@@ -17,7 +16,6 @@ const initialValues = {
   imageUrl: '',
   dotfilesUrl: '',
 }
-
 const SPEC_FIELDS = [
   {
     name: 'distro',
@@ -39,7 +37,6 @@ const SPEC_FIELDS = [
     options: ['Catppuccin', 'Nord', 'Gruvbox', 'Dracula', 'Custom'],
   },
 ]
-
 function validate(values) {
   const errors = {}
   if (!values.title.trim()) errors.title = '> ERR: TITLE_REQUIRED'
@@ -52,7 +49,6 @@ function validate(values) {
   }
   return errors
 }
-
 export default function Submit() {
   const { values, errors, submitting, handleChange, handleSubmit, reset } =
     useForm(initialValues, validate)
@@ -63,11 +59,9 @@ export default function Submit() {
     setSubmitted(true)
     reset()
   })
-
   return (
     <Layout>
       <div className="mx-auto w-full max-w-page px-4 py-12 lg:px-12">
-        {/* Page header */}
         <div className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-end">
           <div>
             <h1 className="font-display text-4xl font-bold uppercase tracking-tighter text-on-surface lg:text-5xl">
@@ -82,14 +76,11 @@ export default function Submit() {
             <span className="font-mono text-sm text-terminal-green">SYSTEM_READY</span>
           </div>
         </div>
-
         {submitted && (
           <p className="mb-8 border-2 border-terminal-green bg-surface-container p-4 font-mono text-sm text-terminal-green">
             &gt; RICE_SUBMITTED_SUCCESSFULLY — IT_WILL_APPEAR_IN_THE_GALLERY_AFTER_REVIEW_
           </p>
         )}
-
-        {/* Form card */}
         <form
           onSubmit={submitRice}
           noValidate
@@ -98,9 +89,7 @@ export default function Submit() {
           <div className="absolute -top-4 left-4 border-2 border-outline bg-background px-4 py-1 font-mono text-xs uppercase text-on-surface">
             RICE_SUBMISSION_FORM_v1.0
           </div>
-
           <div className="space-y-12 p-6 sm:p-10">
-            {/* BASIC_INFO */}
             <Section title="BASIC_INFO">
               <FormField label="RICE_TITLE" required error={errors.title}>
                 <TextField
@@ -122,8 +111,6 @@ export default function Submit() {
                 />
               </FormField>
             </Section>
-
-            {/* SPECS */}
             <Section title="SPECS">
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                 {SPEC_FIELDS.map((field) => (
@@ -160,8 +147,6 @@ export default function Submit() {
                 ))}
               </div>
             </Section>
-
-            {/* MEDIA */}
             <Section title="MEDIA">
               <FormField
                 label="SCREENSHOT_URL"
@@ -175,8 +160,6 @@ export default function Submit() {
                 />
               </FormField>
             </Section>
-
-            {/* LINKS */}
             <Section title="LINKS">
               <FormField label="DOTFILES_REPOSITORY" required error={errors.dotfilesUrl}>
                 <TextField
@@ -189,8 +172,6 @@ export default function Submit() {
                 />
               </FormField>
             </Section>
-
-            {/* Actions */}
             <div className="flex items-center justify-end border-t-2 border-outline-variant pt-8">
               <button
                 type="submit"
@@ -206,7 +187,6 @@ export default function Submit() {
     </Layout>
   )
 }
-
 function Section({ title, children }) {
   return (
     <section className="space-y-6">

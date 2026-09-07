@@ -1,29 +1,29 @@
-import { mockRices } from './mockRices'
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
-const NETWORK_DELAY_MS = 500
+export async function fetchRices({ query = '', filters = {} } = {}) {
+  const params = new URLSearchParams()
+  if (query) params.set('search', query)
+  if (filters.distro?.length) params.set('distro', filters.distro.join(','))
+  if (filters.wm?.length) params.set('wm', filters.wm.join(','))
+  if (filters.colorScheme?.length) params.set('colorScheme', filters.colorScheme.join(','))
 
-export function fetchRices({ query = '', filters = {} } = {}) {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve(filterRices(query, filters))
-    }, NETWORK_DELAY_MS)
-  })
+  const res = await fetch(`${API_BASE}/rices?${params}`)
+  const json = await res.json()
+  if (!json.success) throw new Error(json.error)
+  return json.data.rices
 }
 
-function filterRices(query, filters) {
-  const text = query.trim().toLowerCase()
+export async function fetchRiceById(id) {
+  const res = await fetch(`${API_BASE}/rices/${id}`)
+  const json = await res.json()
+  if (!json.success) throw new Error(json.error)
+  return json.data
+}
 
-  return mockRices.filter((rice) => {
-    const matchesQuery =
-      !text ||
-      rice.title.toLowerCase().includes(text) ||
-      rice.tags.some((tag) => tag.toLowerCase().includes(text))
-
-    const matchesFilters = Object.entries(filters).every(
-      ([field, selected]) =>
-        !selected || selected.length === 0 || selected.includes(rice[field])
-    )
-
-    return matchesQuery && matchesFilters
-  })
+export async function fetchRicesByIds(ids) {
+  if (!ids || ids.length === 0) return []
+  const res = await fetch(`${API_BASE}/rices/batch?ids=${ids.join(',')}`)
+  const json = await res.json()
+  if (!json.success) throw new Error(json.error)
+  return json.data
 }

@@ -30,7 +30,7 @@ export default function DashboardCard({ rice }) {
       {/* Image */}
       <div className="relative h-48 w-full overflow-hidden border-b-2 border-outline">
         <img
-          src={rice.image}
+          src={rice.images?.[0]}
           alt={rice.title}
           className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
         />
@@ -61,7 +61,7 @@ export default function DashboardCard({ rice }) {
           </span>
           <span className="flex items-center gap-1 font-mono text-sm text-on-surface">
             <span className="material-symbols-outlined text-sm">favorite</span>
-            {formatCount(rice.likes)}
+            {formatCount(rice.likes?.length || 0)}
           </span>
         </div>
       </div>

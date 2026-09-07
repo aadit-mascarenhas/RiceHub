@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link, NavLink } from 'react-router'
+import useAuth from '../hooks/useAuth'
 
 const NAV_LINKS = [
   { to: '/', label: 'Browse', end: true },
@@ -13,6 +14,7 @@ const navLinkClass = ({ isActive }) =>
 
 export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false)
+  const { user, logout } = useAuth()
 
   const closeMenu = () => setMenuOpen(false)
 
@@ -43,12 +45,34 @@ export default function Navbar() {
 
         {/* Auth buttons / hamburger */}
         <div className="flex items-center gap-4 border-l-2 border-outline-variant pl-6">
-          <Link
-            to="/login"
-            className="font-mono text-xs uppercase tracking-widest text-on-surface-variant transition-colors hover:text-on-surface"
-          >
-            Login
-          </Link>
+          {user ? (
+            <>
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center border-2 border-terminal-green bg-surface-container">
+                  <span className="font-mono text-xs font-bold text-terminal-green">
+                    {user.handle.slice(1, 2).toUpperCase()}
+                  </span>
+                </div>
+                <span className="hidden font-mono text-xs uppercase tracking-widest text-on-surface sm:block">
+                  {user.handle}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={logout}
+                className="font-mono text-xs uppercase tracking-widest text-on-surface-variant transition-colors hover:text-warning-orange"
+              >
+                Logout
+              </button>
+            </>
+          ) : (
+            <Link
+              to="/login"
+              className="font-mono text-xs uppercase tracking-widest text-on-surface-variant transition-colors hover:text-on-surface"
+            >
+              Login
+            </Link>
+          )}
           <button
             onClick={() => setMenuOpen((open) => !open)}
             aria-label="Toggle navigation"

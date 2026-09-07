@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback } from 'react'
 import Layout from '../components/Layout'
 import RiceCard from '../components/RiceCard'
 import RiceCardSkeleton from '../components/RiceCardSkeleton'
@@ -6,13 +6,11 @@ import FilterSidebar from '../components/FilterSidebar'
 import Pagination from '../components/Pagination'
 import useFetch from '../hooks/useFetch'
 import useDebounce from '../hooks/useDebounce'
+import useFilters from '../hooks/useFilters'
 import { fetchRices } from '../data/mockApi'
-import { EMPTY_FILTERS } from '../data/filterOptions'
 
 export default function Home() {
-  const [search, setSearch] = useState('')
-  const [sort, setSort] = useState('TRENDING')
-  const [selectedFilters, setSelectedFilters] = useState(EMPTY_FILTERS)
+  const { search, setSearch, sort, setSort, selectedFilters } = useFilters()
 
   const debouncedSearch = useDebounce(search, 300)
 
@@ -23,25 +21,10 @@ export default function Home() {
 
   const { data: rices, loading, error } = useFetch(loadRices)
 
-  const toggleFilter = (field, value) => {
-    setSelectedFilters((prev) => ({
-      ...prev,
-      [field]: prev[field].includes(value)
-        ? prev[field].filter((item) => item !== value)
-        : [...prev[field], value],
-    }))
-  }
-
-  const clearFilters = () => setSelectedFilters(EMPTY_FILTERS)
-
   return (
     <Layout>
       <div className="mx-auto flex max-w-page flex-col gap-6 px-4 lg:flex-row lg:px-12">
-        <FilterSidebar
-          selectedFilters={selectedFilters}
-          onToggle={toggleFilter}
-          onClear={clearFilters}
-        />
+        <FilterSidebar />
 
         {/* Main content */}
         <div className="flex w-full min-w-0 flex-col pb-20">
@@ -98,7 +81,7 @@ export default function Home() {
             <>
               <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
                 {rices.map((rice) => (
-                  <RiceCard key={rice.id} rice={rice} />
+                  <RiceCard key={rice._id} rice={rice} />
                 ))}
               </div>
               <Pagination />

@@ -1,15 +1,23 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import Layout from '../components/Layout'
 import DashboardCard from '../components/DashboardCard'
 import SavedRiceCard from '../components/SavedRiceCard'
 import SubmitRiceCard from '../components/SubmitRiceCard'
-import { mockRices } from '../data/mockRices'
+import useFetch from '../hooks/useFetch'
+import useSavedRices from '../hooks/useSavedRices'
+import { fetchRices } from '../data/mockApi'
 
 export default function Dashboard() {
   const [tab, setTab] = useState('my-rices')
+  const { savedIds } = useSavedRices()
 
-  const myRices = mockRices
-  const savedRices = mockRices.slice(0, 2)
+  const loadRices = useCallback(() => fetchRices(), [])
+  const { data: allRices, loading, error } = useFetch(loadRices)
+
+  const myRices = allRices || []
+  const savedRices = allRices
+    ? allRices.filter((rice) => savedIds.includes(rice._id))
+    : []
 
   return (
     <Layout>
@@ -38,7 +46,7 @@ export default function Dashboard() {
                 TOTAL VIEWS
               </span>
               <span className="font-display text-2xl font-bold text-on-surface">
-                14,204
+                {myRices.reduce((sum, r) => sum + (r.views || 0), 0).toLocaleString()}
               </span>
             </div>
             <div className="border-l-2 border-primary bg-surface-container px-6 py-4">
@@ -46,7 +54,7 @@ export default function Dashboard() {
                 UPVOTES
               </span>
               <span className="font-display text-2xl font-bold text-on-surface">
-                892
+                {myRices.reduce((sum, r) => sum + (r.likes?.length || 0), 0).toLocaleString()}
               </span>
             </div>
           </div>
@@ -78,13 +86,27 @@ export default function Dashboard() {
       </div>
 
       <div className="px-4 py-12 lg:px-12">
-        {tab === 'my-rices' && (
+        {error && (
+          <p className="border-2 border-error bg-surface-container p-6 font-mono text-sm text-error">
+            &gt; ERR: {error}
+          </p>
+        )}
+
+        {loading && (
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {[1, 2, 3, 4].map((key) => (
+              <div key={key} className="h-[420px] animate-pulse border-2 border-outline bg-surface-container" />
+            ))}
+          </div>
+        )}
+
+        {!loading && !error && tab === 'my-rices' && (
           <section>
             <div className="mb-8 flex items-center justify-between border-b border-outline-variant pb-4">
               <span className="font-mono text-sm text-on-surface-variant">
                 {myRices.length} UPLOADS DETECTED
               </span>
-              <select className="cursor-pointer border-none bg-transparent font-mono text-sm text-on-surface outline-none">
+              <select className="cursor-pointer border-none bg-background font-mono text-sm text-on-surface outline-none">
                 <option>SORT: RECENT</option>
                 <option>SORT: POPULAR</option>
                 <option>SORT: STATUS</option>
@@ -92,14 +114,14 @@ export default function Dashboard() {
             </div>
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {myRices.map((rice) => (
-                <DashboardCard key={rice.id} rice={rice} />
+                <DashboardCard key={rice._id} rice={rice} />
               ))}
               <SubmitRiceCard />
             </div>
           </section>
         )}
 
-        {tab === 'saved-rices' && (
+        {!loading && !error && tab === 'saved-rices' && (
           <section>
             <div className="mb-8 flex items-center justify-between border-b border-outline-variant pb-4">
               <span className="font-mono text-sm text-on-surface-variant">
@@ -107,9 +129,15 @@ export default function Dashboard() {
               </span>
             </div>
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {savedRices.map((rice) => (
-                <SavedRiceCard key={rice.id} rice={rice} />
-              ))}
+              {savedRices.length === 0 ? (
+                <p className="col-span-full border-2 border-dashed border-outline-variant p-10 text-center font-mono text-sm text-on-surface-variant">
+                  &gt; NO_SAVED_RICES — BOOKMARK_ONE_FROM_BROWSE_
+                </p>
+              ) : (
+                savedRices.map((rice) => (
+                  <SavedRiceCard key={rice._id} rice={rice} />
+                ))
+              )}
             </div>
           </section>
         )}

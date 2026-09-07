@@ -1,8 +1,10 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router'
 import Layout from '../components/Layout'
 import FormField from '../components/form/FormField'
 import TextField from '../components/form/TextField'
 import useForm from '../hooks/useForm'
+import useAuth from '../hooks/useAuth'
 
 const initialValues = { identifier: '', password: '' }
 
@@ -15,13 +17,18 @@ function validate(values) {
 
 export default function Login() {
   const [tab, setTab] = useState('login')
+  const navigate = useNavigate()
+  const { login } = useAuth()
   const { values, errors, submitting, handleChange, handleSubmit } = useForm(
     initialValues,
     validate
   )
 
-  const authenticate = handleSubmit(async () => {
+  const authenticate = handleSubmit(async ({ identifier }) => {
     await new Promise((resolve) => setTimeout(resolve, 800))
+    const handle = `@${identifier.trim().replace(/^@/, '')}`
+    login({ handle, name: handle.slice(1), avatar: null })
+    navigate('/dashboard')
   })
 
   return (

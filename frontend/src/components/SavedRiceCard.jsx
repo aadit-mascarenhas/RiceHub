@@ -1,11 +1,16 @@
 import MetaChip from './MetaChip'
+import useSavedRices from '../hooks/useSavedRices'
 
 export default function SavedRiceCard({ rice }) {
+  const { toggleSave } = useSavedRices()
+
   return (
     <div className="group card-lift-white relative flex h-[420px] flex-col border-2 border-outline bg-surface-container">
       <button
+        type="button"
+        onClick={() => toggleSave(rice._id)}
         title="Remove from saved"
-        className="absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center border-2 border-outline bg-surface-container transition-colors hover:border-primary"
+        className="absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center border-2 border-outline bg-surface-container transition-colors hover:border-warning-orange hover:text-warning-orange"
       >
         <span
           className="material-symbols-outlined text-primary"
@@ -18,7 +23,7 @@ export default function SavedRiceCard({ rice }) {
       {/* Image */}
       <div className="relative h-48 w-full overflow-hidden border-b-2 border-outline">
         <img
-          src={rice.image}
+          src={rice.images?.[0]}
           alt={rice.title}
           className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
         />
@@ -38,18 +43,10 @@ export default function SavedRiceCard({ rice }) {
           {rice.description}
         </p>
         <div className="mt-auto flex items-center gap-3 border-t border-outline-variant pt-4">
-          <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-outline bg-surface-container">
-            {rice.avatar ? (
-              <img
-                src={rice.avatar}
-                alt={rice.author}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <span className="font-mono text-xs text-on-surface-variant">
-                {rice.author.slice(1, 2).toUpperCase()}
-              </span>
-            )}
+          <div className="flex h-8 w-8 items-center justify-center border border-outline bg-surface-container">
+            <span className="font-mono text-xs text-on-surface-variant">
+              {rice.author?.slice(1, 2).toUpperCase()}
+            </span>
           </div>
           <span className="font-mono text-sm text-on-surface-variant">
             {rice.author}
