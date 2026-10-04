@@ -4,8 +4,10 @@ import FormField from '../components/form/FormField'
 import TextField from '../components/form/TextField'
 import SelectField from '../components/form/SelectField'
 import useForm from '../hooks/useForm'
+import { createRice } from '../data/mockApi'
 const initialValues = {
   title: '',
+  author: '',
   description: '',
   distro: '',
   wm: '',
@@ -40,6 +42,7 @@ const SPEC_FIELDS = [
 function validate(values) {
   const errors = {}
   if (!values.title.trim()) errors.title = '> ERR: TITLE_REQUIRED'
+  if (!values.author.trim()) errors.author = '> ERR: AUTHOR_REQUIRED'
   if (!values.distro) errors.distro = '> ERR: DISTRO_REQUIRED'
   if (!values.wm.trim()) errors.wm = '> ERR: WM_REQUIRED'
   if (!values.dotfilesUrl.trim()) {
@@ -53,11 +56,30 @@ export default function Submit() {
   const { values, errors, submitting, handleChange, handleSubmit, reset } =
     useForm(initialValues, validate)
   const [submitted, setSubmitted] = useState(false)
+  const [serverError, setServerError] = useState(null)
 
-  const submitRice = handleSubmit(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 800))
-    setSubmitted(true)
-    reset()
+  const submitRice = handleSubmit(async (formValues) => {
+    try {
+      await createRice({
+        title: formValues.title.trim(),
+        author: formValues.author.trim(),
+        description: formValues.description.trim(),
+        distro: formValues.distro,
+        wm: formValues.wm.trim(),
+        bar: formValues.bar.trim(),
+        launcher: formValues.launcher.trim(),
+        terminal: formValues.terminal.trim(),
+        colorScheme: formValues.colorScheme,
+        images: formValues.imageUrl.trim() ? [formValues.imageUrl.trim()] : [],
+        dotfilesUrl: formValues.dotfilesUrl.trim(),
+        tags: [],
+      })
+      setServerError(null)
+      setSubmitted(true)
+      reset()
+    } catch (err) {
+      setServerError(err.message || 'SUBMISSION_FAILED')
+    }
   })
   return (
     <Layout>
@@ -81,6 +103,11 @@ export default function Submit() {
             &gt; RICE_SUBMITTED_SUCCESSFULLY — IT_WILL_APPEAR_IN_THE_GALLERY_AFTER_REVIEW_
           </p>
         )}
+        {serverError && (
+          <p className="mb-8 border-2 border-error bg-surface-container p-4 font-mono text-sm text-error">
+            &gt; ERR: {serverError}
+          </p>
+        )}
         <form
           onSubmit={submitRice}
           noValidate
@@ -98,6 +125,15 @@ export default function Submit() {
                   onChange={handleChange}
                   placeholder="ENTER_TITLE..."
                   hasError={Boolean(errors.title)}
+                />
+              </FormField>
+              <FormField label="AUTHOR" required error={errors.author}>
+                <TextField
+                  name="author"
+                  value={values.author}
+                  onChange={handleChange}
+                  placeholder="YOUR_HANDLE..."
+                  hasError={Boolean(errors.author)}
                 />
               </FormField>
               <FormField label="DESCRIPTION">

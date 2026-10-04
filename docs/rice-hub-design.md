@@ -19,16 +19,20 @@ in `AGENTS.md`.
 ```
 backend/
 ├── package.json
-├── .env.example          # MONGODB_URI, PORT
+├── .env.example          # MONGODB_URI, PORT, CORS_ORIGIN
 ├── .env                  # gitignored
-├── server.js             # Entry: load env, connect DB, mount routes, error handler
+├── server.js             # Entry: load env, connect DB, security middleware
+│                         #   (helmet → cors → json → mongo-sanitize → rate
+│                         #   limit), mount routes, 404 + error handler
 ├── config/
 │   └── db.js             # mongoose.connect() with event logging
 ├── models/
 │   └── Rice.js           # Mongoose schema + model
 ├── routes/
-│   └── rices.js          # CRUD router
+│   └── rices.js          # CRUD router + validation rules (express-validator)
 ├── middleware/
+│   ├── validate.js       # validate(rules): runs validator chains → 400 envelope
+│   ├── notFound.js       # Unknown /api route → 404 envelope
 │   └── errorHandler.js   # Centralized error → { success: false, error }
 ├── seeds/
 │   └── seed.js           # Clears + inserts seed rices
@@ -41,13 +45,47 @@ backend/
 | Method | Endpoint | Description |
 |---|---|---|
 | `GET` | `/api/rices` | List with search, filter, sort, pagination |
+| `GET` | `/api/rices/batch` | Fetch many by `ids` (csv, ≤50, valid ObjectIds) |
 | `GET` | `/api/rices/:id` | Get single rice (increments views) |
-| `POST` | `/api/rices` | Create rice |
-| `PUT` | `/api/rices/:id` | Update rice |
+| `POST` | `/api/rices` | Create rice (validated body, whitelisted fields) |
+| `PUT` | `/api/rices/:id` | Update rice (validated body, whitelisted fields) |
 | `DELETE` | `/api/rices/:id` | Delete rice |
-| `GET` | `/api/health` | Health check |
+| `GET` | `/api/health` | Health check (skips rate limit) |
 
-Response envelope: `{ success: boolean, data?, error? }`
+Response envelope: `{ success: boolean, data?, error? }`. Unknown `/api`
+routes return a JSON 404 envelope; malformed JSON returns
+`400 Invalid JSON body`.
+
+### Validation & error handling (Experiment 5)
+
+Middleware order in `server.js`: `helmet` → `cors` (origin from
+`CORS_ORIGIN`, comma-separated) → `express.json` → `express-mongo-sanitize`
+(strips `$`/`.` operators from query/body) → rate limiter (30 req/min per IP
+on `/api/*`, `/api/health` skipped → `429 Too many requests`) → routers →
+`notFound` → `errorHandler`.
+
+Validation via `express-validator` in `routes/rices.js`, run by
+`middleware/validate.js`; failures respond `400 { success, error }` with all
+messages joined.
+
+| Input | Rule |
+|---|---|
+| `title`, `wm` | required, trimmed, non-empty (POST; optional on PUT) |
+| `distro` | one of Arch, Debian, Ubuntu, Fedora, NixOS, Other |
+| `dotfilesUrl` | must match `https?://…` |
+| `author` | optional, 1–40 chars (ignored from Exp 6 once JWT owns it) |
+| `images` | ≤10 entries, each an http(s) URL |
+| `tags` | ≤10 entries, each ≤32 chars, uppercased |
+| `page`, `limit` | clamped, never rejected (`page` ≥1, `limit` 1–50) |
+| `sort` | one of NEWEST, TRENDING, TOP_ALL_TIME (else 400) |
+| `ids` (batch) | required, 1–50 comma-separated valid ObjectIds |
+
+POST/PUT bodies are whitelisted through `matchedData` — `likes`, `views`,
+`status`, `createdAt`, `role` etc. sent by clients are silently stripped
+(never trusted). TRENDING/TOP_ALL_TIME sorting runs a Mongo aggregation on
+`likes.length` (fixed in Exp 5). Errors: mongoose `ValidationError` → 400,
+`CastError` → 400 `Invalid ID format`, anything ≥500 → generic
+`Internal server error` (stack logged, never leaked).
 
 ## Frontend architecture
 
@@ -71,8 +109,10 @@ frontend/src/
 ### Data flow
 
 `data/mockApi.js` is the API seam: `fetchRices({ query, filters })` makes real
-HTTP calls to the backend API at `http://localhost:5000/api`. Response envelope
-contract: always `{ success, data?, error? }`.
+HTTP calls to the backend API at `http://localhost:5000/api`. Exp 5 added
+`createRice` / `updateRice` / `deleteRice` (used by `pages/Submit.jsx`, which
+shows server envelope errors as `> ERR: …`). Response envelope contract:
+always `{ success, data?, error? }`.
 
 Data fetching goes through `useFetch(fetcher)` only — never raw fetch/axios in
 component bodies. The fetcher must be referentially stable (wrap in
@@ -133,6 +173,8 @@ Mock data and Mongoose model are now aligned with this schema (Exp 4).
 
 ## API contract
 
-REST under `/api/*`; envelope `{ success, data?, error? }`. JWT auth
-(`Authorization: Bearer`), `authMiddleware`, and `requireOwnerOrAdmin` are
-Exp 5/6 scope — never trust client-sent `author`/`role` until then.
+REST under `/api/*`; envelope `{ success, data?, error? }`. Validation,
+sanitization, rate limiting, and security headers ship as of Exp 5 — client
+bodies are whitelisted, so `author`/`status`/`likes` from the client are
+untrusted. JWT auth (`Authorization: Bearer`), `authMiddleware`, and
+`requireOwnerOrAdmin` are Exp 6 scope — never trust client-sent `role`.

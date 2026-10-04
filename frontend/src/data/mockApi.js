@@ -27,3 +27,28 @@ export async function fetchRicesByIds(ids) {
   if (!json.success) throw new Error(json.error)
   return json.data
 }
+
+async function request(path, { method = 'GET', body } = {}) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  })
+  const json = await res
+    .json()
+    .catch(() => ({ success: false, error: 'Unexpected server response' }))
+  if (!json.success) throw new Error(json.error || 'Request failed')
+  return json.data
+}
+
+export async function createRice(payload) {
+  return request('/rices', { method: 'POST', body: payload })
+}
+
+export async function updateRice(id, payload) {
+  return request(`/rices/${id}`, { method: 'PUT', body: payload })
+}
+
+export async function deleteRice(id) {
+  return request(`/rices/${id}`, { method: 'DELETE' })
+}
