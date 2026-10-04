@@ -1,6 +1,8 @@
+import http from 'http'
 import dotenv from 'dotenv'
 import express from 'express'
 import cors from 'cors'
+import { Server } from 'socket.io'
 import helmet from 'helmet'
 import rateLimit from 'express-rate-limit'
 import mongoSanitize from 'express-mongo-sanitize'
@@ -9,6 +11,7 @@ import authRouter from './routes/auth.js'
 import ricesRouter from './routes/rices.js'
 import notFound from './middleware/notFound.js'
 import errorHandler from './middleware/errorHandler.js'
+import { attachComments } from './realtime/comments.js'
 
 dotenv.config()
 
@@ -55,7 +58,14 @@ const start = async () => {
     process.exit(1)
   }
   await connectDB()
-  app.listen(PORT, () => {
+
+  // One HTTP server backs both Express and Socket.IO.
+  const server = http.createServer(app)
+  const io = new Server(server, { cors: { origin: CORS_ORIGIN } })
+  app.set('io', io)
+  attachComments(io)
+
+  server.listen(PORT, () => {
     console.log(`SERVER_RUNNING: http://localhost:${PORT}`)
   })
 }

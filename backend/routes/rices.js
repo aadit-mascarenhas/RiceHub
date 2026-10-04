@@ -2,6 +2,7 @@ import { Router } from 'express'
 import mongoose from 'mongoose'
 import { body, query, matchedData } from 'express-validator'
 import Rice from '../models/Rice.js'
+import Comment from '../models/Comment.js'
 import validate from '../middleware/validate.js'
 import { authMiddleware, requireOwnerOrAdmin } from '../middleware/auth.js'
 
@@ -107,6 +108,25 @@ const riceRules = (required) => {
   ]
 }
 
+const commentListRules = [
+  query('limit')
+    .optional()
+    .customSanitizer((value) => clampInt(value, { min: 1, max: 100, fallback: 50 })),
+  query('before')
+    .optional()
+    .isMongoId()
+    .withMessage('before must be a valid comment id'),
+]
+
+const commentRules = [
+  body('text')
+    .trim()
+    .notEmpty()
+    .withMessage('text is required')
+    .isLength({ max: 500 })
+    .withMessage('text must be at most 500 characters'),
+]
+
 // --- routes ----------------------------------------------------------------
 
 const loadRice = (req) => Rice.findById(req.params.id)
@@ -193,6 +213,51 @@ router.get('/mine', authMiddleware, async (req, res, next) => {
   try {
     const rices = await Rice.find({ author: req.user.handle }).sort({ createdAt: -1 })
     res.json({ success: true, data: rices })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// Initial comment history + REST fallback; live updates come over sockets.
+router.get('/:id/comments', validate(commentListRules), async (req, res, next) => {
+  try {
+    const rice = await Rice.findById(req.params.id).select('_id')
+    if (!rice) {
+      return res.status(404).json({ success: false, error: 'Rice not found' })
+    }
+
+    const limit = req.query.limit ?? 50
+    const q = { rice: rice._id }
+    if (req.query.before) q._id = { $lt: req.query.before }
+
+    // Latest page first, then flipped to chronological for the client.
+    const comments = await Comment.find(q).sort({ createdAt: -1 }).limit(limit)
+    res.json({ success: true, data: comments.reverse() })
+  } catch (err) {
+    next(err)
+  }
+})
+
+router.post('/:id/comments', authMiddleware, validate(commentRules), async (req, res, next) => {
+  try {
+    const rice = await Rice.findById(req.params.id).select('_id')
+    if (!rice) {
+      return res.status(404).json({ success: false, error: 'Rice not found' })
+    }
+
+    const { text } = matchedData(req, { locations: ['body'] })
+    const comment = await Comment.create({
+      rice: rice._id,
+      authorId: req.user.id,
+      authorHandle: req.user.handle,
+      text,
+    })
+
+    // Clients that reach us over plain HTTP (socket dropped) still broadcast
+    // to everyone in the rice's socket room.
+    req.app.get('io')?.to(`rice:${rice._id}`).emit('comment:new', comment)
+
+    res.status(201).json({ success: true, data: comment })
   } catch (err) {
     next(err)
   }

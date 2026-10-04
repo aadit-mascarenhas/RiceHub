@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react'
 import { useParams, Link, useNavigate } from 'react-router'
 import Layout from '../components/Layout'
 import MetaChip from '../components/MetaChip'
+import CommentsPanel from '../components/CommentsPanel'
 import useFetch from '../hooks/useFetch'
 import useSavedRices from '../hooks/useSavedRices'
 import useAuth from '../hooks/useAuth'
@@ -268,18 +269,8 @@ export default function RiceDetail() {
                 </section>
               )}
 
-              {/* Comments Placeholder */}
-              <section className="flex flex-col gap-4">
-                <div className="flex items-center justify-between border-b-2 border-outline-variant pb-2">
-                  <h3 className="font-mono text-xs uppercase tracking-widest text-on-surface-variant">
-                    Logs
-                  </h3>
-                  <span className="font-mono text-xs text-terminal-green">COMING SOON</span>
-                </div>
-                <p className="border-2 border-dashed border-outline-variant p-6 text-center font-mono text-xs text-on-surface-variant">
-                  &gt; COMMENTS_MODULE_PENDING_EXP8_
-                </p>
-              </section>
+              {/* Comments (live, Exp 8) */}
+              <CommentsPanel riceId={id} key={id} />
             </div>
           </div>
         </div>

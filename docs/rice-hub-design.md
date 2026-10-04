@@ -28,15 +28,19 @@ backend/
 │   └── db.js             # mongoose.connect() with event logging
 ├── models/
 │   ├── Rice.js           # Mongoose schema + model
-│   └── User.js           # handle (unique), email (unique), passwordHash, role
+│   ├── User.js           # handle (unique), email (unique), passwordHash, role
+│   └── Comment.js        # rice ref, authorId, authorHandle snapshot, text
 ├── routes/
 │   ├── auth.js           # POST register / login → { token, user }
-│   └── rices.js          # CRUD router + validation rules (express-validator)
+│   └── rices.js          # CRUD router + validation rules (express-validator),
+│                         #   incl. comment list/create subroutes
 ├── middleware/
 │   ├── validate.js       # validate(rules): runs validator chains → 400 envelope
 │   ├── auth.js           # authMiddleware (Bearer JWT) + requireOwnerOrAdmin
 │   ├── notFound.js       # Unknown /api route → 404 envelope
 │   └── errorHandler.js   # Centralized error → { success: false, error }
+├── realtime/
+│   └── comments.js       # Socket.IO: JWT handshake, rooms, comment:send relay
 ├── seeds/
 │   └── seed.js           # Clears + inserts seed rices
 └── scripts/
@@ -57,6 +61,8 @@ backend/
 | `PUT` | `/api/rices/:id` | Bearer | Update rice — owner or admin only |
 | `DELETE` | `/api/rices/:id` | Bearer | Delete rice — owner or admin only |
 | `POST` | `/api/rices/:id/like` | Bearer | Toggle caller's handle in `likes[]` |
+| `GET` | `/api/rices/:id/comments` | — | Comment history — `?limit=` (1–100, default 50), `?before=<commentId>` cursor, chronological |
+| `POST` | `/api/rices/:id/comments` | Bearer | Post a comment (`text` 1–500 chars); also live-broadcasts to the rice's socket room |
 | `GET` | `/api/health` | — | Health check (skips rate limit) |
 
 Response envelope: `{ success: boolean, data?, error? }`. Unknown `/api`
@@ -120,6 +126,31 @@ JWT accounts with ownership + roles; all public reads stay open.
   `@admin` (admin). `npm run seed` recreates them.
 - Auth routes sit under the same 30 req/min `/api` limiter — a failed-login
   burst is throttled like everything else.
+
+## Realtime comments (Experiment 8)
+
+Comments are persisted (REST is the source of truth) and pushed live over
+Socket.IO on the same HTTP server (`httpServer` in `server.js`).
+
+- **Comment model**: `{ rice (ref, indexed), authorId (ref User),
+  authorHandle (snapshot), text (trim, ≤500), createdAt }`.
+- **Handshake**: client connects with `io(url, { auth: { token } })`. Missing
+  token → anonymous read-only connection; invalid/expired token → server
+  disconnects the socket.
+- **Client → server**: `join` / `leave` with a rice id (joins `rice:<id>`
+  room), `comment:send` `{ riceId, text }` with an ack callback. Send requires
+  an authenticated socket, text is validated (1–500 chars) and each socket is
+  rate-limited to ~1 comment/second.
+- **Server → client**: `comment:new` broadcast to the rice's room — emitted
+  for both socket sends and REST posts (REST fallback keeps disconnected
+  clients consistent). Text is rendered as plain text only.
+- **Client** (`components/CommentsPanel.jsx`): loads history via
+  `useFetch(fetchComments)`, then layers live `comment:new` events (deduped
+  by `_id`). Sends are optimistic with rollback on error; the HTTP POST path
+  (`postComment`) is the fallback when the socket is down. Anonymous viewers
+  see history but get a login link instead of the composer.
+- The HTTP comment routes stay under the Exp 5 30 req/min `/api` limiter —
+  that throttling is intended and documented here.
 
 ## Frontend architecture
 

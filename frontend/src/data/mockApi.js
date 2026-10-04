@@ -76,3 +76,19 @@ export async function toggleLike(id, token) {
 export async function fetchMyRices(token) {
   return request('/rices/mine', { token })
 }
+
+// --- comments (Exp 8) --------------------------------------------------------
+
+export async function fetchComments(riceId, { limit = 50, before } = {}) {
+  const params = new URLSearchParams()
+  if (limit) params.set('limit', String(limit))
+  if (before) params.set('before', before)
+  const res = await fetch(`${API_BASE}/rices/${riceId}/comments?${params}`)
+  const json = await res.json()
+  if (!json.success) throw new Error(json.error)
+  return json.data
+}
+
+export async function postComment(riceId, text, token) {
+  return request(`/rices/${riceId}/comments`, { method: 'POST', body: { text }, token })
+}
