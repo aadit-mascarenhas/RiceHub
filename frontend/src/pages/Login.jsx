@@ -1,35 +1,63 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useNavigate, useSearchParams } from 'react-router'
 import Layout from '../components/Layout'
 import FormField from '../components/form/FormField'
 import TextField from '../components/form/TextField'
 import useForm from '../hooks/useForm'
 import useAuth from '../hooks/useAuth'
 
-const initialValues = { identifier: '', password: '' }
-
-function validate(values) {
-  const errors = {}
-  if (!values.identifier.trim()) errors.identifier = '> ERR: IDENTIFIER_REQUIRED'
-  if (!values.password) errors.password = '> ERR: PASSPHRASE_REQUIRED'
-  return errors
-}
+const initialValues = { identifier: '', handle: '', email: '', password: '' }
 
 export default function Login() {
   const [tab, setTab] = useState('login')
+  const [serverError, setServerError] = useState(null)
   const navigate = useNavigate()
-  const { login } = useAuth()
+  const [searchParams] = useSearchParams()
+  const { login, register } = useAuth()
+
+  const redirectTo = searchParams.get('next') || '/dashboard'
+
+  const validate = (values) => {
+    const errors = {}
+    if (tab === 'login') {
+      if (!values.identifier.trim()) errors.identifier = '> ERR: IDENTIFIER_REQUIRED'
+      if (!values.password) errors.password = '> ERR: PASSPHRASE_REQUIRED'
+    } else {
+      const handle = values.handle.trim().replace(/^@/, '').toLowerCase()
+      if (!handle) errors.handle = '> ERR: HANDLE_REQUIRED'
+      else if (!/^[a-z0-9_]{3,30}$/.test(handle)) errors.handle = '> ERR: HANDLE_INVALID'
+      if (!values.email.trim()) errors.email = '> ERR: EMAIL_REQUIRED'
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email.trim()))
+        errors.email = '> ERR: EMAIL_INVALID'
+      if (!values.password) errors.password = '> ERR: PASSPHRASE_REQUIRED'
+      else if (values.password.length < 8) errors.password = '> ERR: PASSPHRASE_TOO_SHORT'
+    }
+    return errors
+  }
+
   const { values, errors, submitting, handleChange, handleSubmit } = useForm(
     initialValues,
-    validate
+    validate,
   )
 
-  const authenticate = handleSubmit(async ({ identifier }) => {
-    await new Promise((resolve) => setTimeout(resolve, 800))
-    const handle = `@${identifier.trim().replace(/^@/, '')}`
-    login({ handle, name: handle.slice(1), avatar: null })
-    navigate('/dashboard')
+  const authenticate = handleSubmit(async (formValues) => {
+    try {
+      if (tab === 'login') {
+        await login(formValues.identifier.trim(), formValues.password)
+      } else {
+        await register(formValues.handle.trim(), formValues.email.trim(), formValues.password)
+      }
+      setServerError(null)
+      navigate(redirectTo, { replace: true })
+    } catch (err) {
+      setServerError(err.message || 'AUTHENTICATION_FAILED')
+    }
   })
+
+  const switchTab = (key) => {
+    setTab(key)
+    setServerError(null)
+  }
 
   return (
     <Layout>
@@ -73,7 +101,7 @@ export default function Login() {
             {['login', 'register'].map((key) => (
               <button
                 key={key}
-                onClick={() => setTab(key)}
+                onClick={() => switchTab(key)}
                 className={`flex-1 py-3 text-center font-mono text-sm uppercase transition-colors ${
                   tab === key
                     ? 'bg-surface-container-high text-on-surface'
@@ -94,24 +122,65 @@ export default function Login() {
           {/* Form */}
           <form onSubmit={authenticate} noValidate className="space-y-6">
             <div className="space-y-4">
-              <FormField
-                label="IDENTIFIER [ USER/EMAIL ]"
-                htmlFor="identifier"
-                error={errors.identifier}
-                className="group space-y-2"
-                labelClassName="block font-mono text-xs uppercase text-primary"
-              >
-                <TextField
-                  prefix
-                  name="identifier"
-                  type="text"
-                  placeholder="username"
-                  autoComplete="off"
-                  value={values.identifier}
-                  onChange={handleChange}
-                  hasError={Boolean(errors.identifier)}
-                />
-              </FormField>
+              {tab === 'login' ? (
+                <FormField
+                  label="IDENTIFIER [ USER/EMAIL ]"
+                  htmlFor="identifier"
+                  error={errors.identifier}
+                  className="group space-y-2"
+                  labelClassName="block font-mono text-xs uppercase text-primary"
+                >
+                  <TextField
+                    prefix
+                    name="identifier"
+                    type="text"
+                    placeholder="username"
+                    autoComplete="off"
+                    value={values.identifier}
+                    onChange={handleChange}
+                    hasError={Boolean(errors.identifier)}
+                  />
+                </FormField>
+              ) : (
+                <>
+                  <FormField
+                    label="HANDLE"
+                    htmlFor="handle"
+                    error={errors.handle}
+                    className="group space-y-2"
+                    labelClassName="block font-mono text-xs uppercase text-primary"
+                  >
+                    <TextField
+                      prefix
+                      name="handle"
+                      type="text"
+                      placeholder="your_handle"
+                      autoComplete="off"
+                      value={values.handle}
+                      onChange={handleChange}
+                      hasError={Boolean(errors.handle)}
+                    />
+                  </FormField>
+                  <FormField
+                    label="EMAIL"
+                    htmlFor="email"
+                    error={errors.email}
+                    className="group space-y-2"
+                    labelClassName="block font-mono text-xs uppercase text-primary"
+                  >
+                    <TextField
+                      prefix
+                      name="email"
+                      type="email"
+                      placeholder="you@example.com"
+                      autoComplete="off"
+                      value={values.email}
+                      onChange={handleChange}
+                      hasError={Boolean(errors.email)}
+                    />
+                  </FormField>
+                </>
+              )}
               <FormField
                 label="PASSPHRASE"
                 htmlFor="password"
@@ -124,6 +193,7 @@ export default function Login() {
                   name="password"
                   type="password"
                   placeholder="••••••••"
+                  autoComplete="off"
                   value={values.password}
                   onChange={handleChange}
                   hasError={Boolean(errors.password)}
@@ -131,13 +201,23 @@ export default function Login() {
               </FormField>
             </div>
 
+            {serverError && (
+              <p className="border-2 border-error bg-surface-container p-3 font-mono text-xs text-error">
+                &gt; ERR: {serverError}
+              </p>
+            )}
+
             <button
               type="submit"
               disabled={submitting}
               className="group relative flex w-full items-center justify-center gap-2 overflow-hidden border-2 border-black bg-white py-4 font-display text-lg font-bold uppercase text-black shadow-hard transition-all active:translate-x-1 active:translate-y-1 active:shadow-none disabled:opacity-70"
             >
               <span className="relative z-10">
-                {submitting ? 'AUTHENTICATING...' : 'ACCESS HUB'}
+                {submitting
+                  ? 'AUTHENTICATING...'
+                  : tab === 'login'
+                    ? 'ACCESS HUB'
+                    : 'CREATE ACCOUNT'}
               </span>
               {!submitting && (
                 <span className="material-symbols-outlined relative z-10 text-xl">login</span>

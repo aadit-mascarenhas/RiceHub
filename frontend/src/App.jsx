@@ -4,14 +4,29 @@ import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Submit from './pages/Submit'
 import RiceDetail from './pages/RiceDetail'
+import ProtectedRoute from './components/ProtectedRoute'
 
 function App() {
   return (
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/login" element={<Login />} />
-      <Route path="/dashboard" element={<Dashboard />} />
-      <Route path="/submit" element={<Submit />} />
+      <Route
+        path="/dashboard"
+        element={
+          <ProtectedRoute>
+            <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/submit"
+        element={
+          <ProtectedRoute>
+            <Submit />
+          </ProtectedRoute>
+        }
+      />
       <Route path="/rice/:id" element={<RiceDetail />} />
     </Routes>
   )

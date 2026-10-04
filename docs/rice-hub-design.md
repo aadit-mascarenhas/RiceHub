@@ -27,11 +27,14 @@ backend/
 ├── config/
 │   └── db.js             # mongoose.connect() with event logging
 ├── models/
-│   └── Rice.js           # Mongoose schema + model
+│   ├── Rice.js           # Mongoose schema + model
+│   └── User.js           # handle (unique), email (unique), passwordHash, role
 ├── routes/
+│   ├── auth.js           # POST register / login → { token, user }
 │   └── rices.js          # CRUD router + validation rules (express-validator)
 ├── middleware/
 │   ├── validate.js       # validate(rules): runs validator chains → 400 envelope
+│   ├── auth.js           # authMiddleware (Bearer JWT) + requireOwnerOrAdmin
 │   ├── notFound.js       # Unknown /api route → 404 envelope
 │   └── errorHandler.js   # Centralized error → { success: false, error }
 ├── seeds/
@@ -42,15 +45,19 @@ backend/
 
 ### API endpoints
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/rices` | List with search, filter, sort, pagination |
-| `GET` | `/api/rices/batch` | Fetch many by `ids` (csv, ≤50, valid ObjectIds) |
-| `GET` | `/api/rices/:id` | Get single rice (increments views) |
-| `POST` | `/api/rices` | Create rice (validated body, whitelisted fields) |
-| `PUT` | `/api/rices/:id` | Update rice (validated body, whitelisted fields) |
-| `DELETE` | `/api/rices/:id` | Delete rice |
-| `GET` | `/api/health` | Health check (skips rate limit) |
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| `POST` | `/api/auth/register` | — | Create account `{handle,email,password}` → `{token,user}` |
+| `POST` | `/api/auth/login` | — | `{identifier,password}` (handle or email) → `{token,user}` |
+| `GET` | `/api/rices` | — | List with search, filter, sort, pagination |
+| `GET` | `/api/rices/batch` | — | Fetch many by `ids` (csv, ≤50, valid ObjectIds) |
+| `GET` | `/api/rices/mine` | Bearer | Rices owned by the token's handle |
+| `GET` | `/api/rices/:id` | — | Get single rice (increments views) |
+| `POST` | `/api/rices` | Bearer | Create rice (validated body; `author` = token handle) |
+| `PUT` | `/api/rices/:id` | Bearer | Update rice — owner or admin only |
+| `DELETE` | `/api/rices/:id` | Bearer | Delete rice — owner or admin only |
+| `POST` | `/api/rices/:id/like` | Bearer | Toggle caller's handle in `likes[]` |
+| `GET` | `/api/health` | — | Health check (skips rate limit) |
 
 Response envelope: `{ success: boolean, data?, error? }`. Unknown `/api`
 routes return a JSON 404 envelope; malformed JSON returns
@@ -86,6 +93,33 @@ POST/PUT bodies are whitelisted through `matchedData` — `likes`, `views`,
 `likes.length` (fixed in Exp 5). Errors: mongoose `ValidationError` → 400,
 `CastError` → 400 `Invalid ID format`, anything ≥500 → generic
 `Internal server error` (stack logged, never leaked).
+
+## Authentication (Experiment 6)
+
+JWT accounts with ownership + roles; all public reads stay open.
+
+- **User model**: `handle` (unique, stored lowercase with `@` prefix),
+  `email` (unique), `passwordHash` (bcrypt, 10 rounds), `role: user|admin`
+  (default `user`), timestamps. `toSafeJSON()` never exposes the hash.
+- **Register** validates handle (`3–30` chars `[a-z0-9_]`, `@` optional in
+  input), email, password (8–100); duplicates → `409`. **Login** takes
+  `identifier` = handle (±`@`) or email + password; failures always return
+  `401 Invalid credentials` (never reveals which field was wrong).
+- **Token**: `jwt.sign({ id, handle, role }, JWT_SECRET, expiresIn:
+  JWT_EXPIRES_IN || '7d')`. Server refuses to start without `JWT_SECRET`.
+  Contract: `Authorization: Bearer <token>`; `authMiddleware` sets
+  `req.user = { id, handle, role }`; `JsonWebTokenError` /
+  `TokenExpiredError` → `401 Invalid or expired token`.
+- **Ownership**: `requireOwnerOrAdmin` loads the rice first — non-owners get
+  `403 You do not own this rice`, admins may edit anything. `POST /rices`
+  overwrites `author` from the token (client-sent `author` is ignored from
+  Exp 6 onward). `POST /:id/like` `$addToSet`/`$pull`s the caller's handle.
+- **Seeded demo accounts** (passwords from `.env` via
+  `SEED_USER_PASSWORD` / `SEED_ADMIN_PASSWORD` — placeholders in
+  `.env.example`, real values only in gitignored `.env`): `@demo` (user),
+  `@admin` (admin). `npm run seed` recreates them.
+- Auth routes sit under the same 30 req/min `/api` limiter — a failed-login
+  burst is throttled like everything else.
 
 ## Frontend architecture
 
@@ -134,12 +168,14 @@ fast-refresh/lint clean; hooks throw if used outside their provider.
 
 Contracts:
 
-- **Auth** — `{ user, login(user), logout() }`. `user` is `null` or
-  `{ handle, name, avatar }`. Mock-only until Exp 6 (JWT): `Login.jsx` derives
-  a handle from the submitted identifier and redirects to `/dashboard`.
-  Mirrored to `sessionStorage['ricehub.user']` — survives reloads, forgotten
-  when the tab closes. No route guards yet; protected routes and roles are
-  Exp 6 scope.
+- **Auth** — `{ user, token, login(identifier, password),
+  register(handle, email, password), logout() }`. Real JWT flow as of
+  Exp 6: `login`/`register` call `/api/auth/*`, session
+  `{ user, token }` mirrored to `sessionStorage['ricehub.user']`
+  (tab-scoped; legacy Exp 3 entries without a token are logged out).
+  `user` = `{ id, handle, email, role }` from the server. Guards:
+  `components/ProtectedRoute.jsx` wraps `/dashboard` and `/submit`;
+  unauth → `/login?next=<path>`.
 - **Saved rices** — `{ savedIds, isSaved(id), toggleSave(id) }`. In-memory
   only (no persistence by design). Producers: bookmark button on `RiceCard`,
   remove button on `SavedRiceCard`. Consumer: Dashboard's saved tab resolves
@@ -175,6 +211,13 @@ Mock data and Mongoose model are now aligned with this schema (Exp 4).
 
 REST under `/api/*`; envelope `{ success, data?, error? }`. Validation,
 sanitization, rate limiting, and security headers ship as of Exp 5 — client
-bodies are whitelisted, so `author`/`status`/`likes` from the client are
-untrusted. JWT auth (`Authorization: Bearer`), `authMiddleware`, and
-`requireOwnerOrAdmin` are Exp 6 scope — never trust client-sent `role`.
+bodies are whitelisted, so `likes`/`status`/`views` from the client are
+untrusted. JWT auth ships as of Exp 6: `Authorization: Bearer <token>` on
+all write routes, `authMiddleware` + `requireOwnerOrAdmin`, `author` derived
+from the token, roles never trusted from the client.
+
+Frontend fetch helpers (`mockApi.js`) take an optional trailing `token` and
+set the Bearer header; public GETs stay tokenless. `useFetch` fetchers must
+be referentially stable (`useCallback`) — an inline fetcher retriggers the
+effect every render in an infinite refetch loop (RiceDetail bug, caught by
+the Exp 5 rate limiter, fixed in Exp 6).

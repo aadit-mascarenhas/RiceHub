@@ -15,6 +15,18 @@ const errorHandler = (err, req, res, _next) => {
     return res.status(400).json({ success: false, error: 'Invalid ID format' })
   }
 
+  // JWT verification failures (authMiddleware + socket handshake helpers).
+  if (['JsonWebTokenError', 'TokenExpiredError', 'NotBeforeError'].includes(err.name)) {
+    return res.status(401).json({ success: false, error: 'Invalid or expired token' })
+  }
+
+  // Mongo unique index race (handle/email taken between check and insert).
+  if (err.code === 11000) {
+    return res
+      .status(409)
+      .json({ success: false, error: 'handle or email already registered' })
+  }
+
   const status = err.statusCode || err.status || 500
 
   // Never expose stacks or internal messages for server-side failures.

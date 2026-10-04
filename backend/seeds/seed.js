@@ -1,6 +1,8 @@
 import dotenv from 'dotenv'
 import mongoose from 'mongoose'
+import bcrypt from 'bcryptjs'
 import Rice from '../models/Rice.js'
+import User from '../models/User.js'
 
 dotenv.config()
 
@@ -91,6 +93,23 @@ const seedRices = [
   },
 ]
 
+// Demo accounts — passwords come from .env (gitignored), never hardcoded.
+// handle must stay in sync with what the login form accepts (@handle/email).
+const seedUsers = [
+  {
+    handle: '@demo',
+    email: 'demo@ricehub.test',
+    password: process.env.SEED_USER_PASSWORD,
+    role: 'user',
+  },
+  {
+    handle: '@admin',
+    email: 'admin@ricehub.test',
+    password: process.env.SEED_ADMIN_PASSWORD,
+    role: 'admin',
+  },
+]
+
 async function seed() {
   try {
     await mongoose.connect(process.env.MONGODB_URI)
@@ -101,6 +120,23 @@ async function seed() {
 
     const inserted = await Rice.insertMany(seedRices)
     console.log(`SEEDED: ${inserted.length} rices`)
+
+    await User.deleteMany({})
+    const users = seedUsers.filter((user) => Boolean(user.password))
+    if (users.length < seedUsers.length) {
+      console.warn('SEED_WARN: missing SEED_*_PASSWORD in .env — skipping that user')
+    }
+    const insertedUsers = await User.insertMany(
+      await Promise.all(
+        users.map(async (user) => ({
+          handle: user.handle,
+          email: user.email,
+          role: user.role,
+          passwordHash: await bcrypt.hash(user.password, 10),
+        })),
+      ),
+    )
+    console.log(`SEEDED: ${insertedUsers.length} users`)
 
     await mongoose.disconnect()
     console.log('MONGODB_DISCONNECTED')

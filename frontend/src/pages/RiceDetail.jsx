@@ -1,19 +1,42 @@
-import { useState } from 'react'
-import { useParams, Link } from 'react-router'
+import { useState, useCallback } from 'react'
+import { useParams, Link, useNavigate } from 'react-router'
 import Layout from '../components/Layout'
 import MetaChip from '../components/MetaChip'
 import useFetch from '../hooks/useFetch'
 import useSavedRices from '../hooks/useSavedRices'
-import { fetchRiceById } from '../data/mockApi'
+import useAuth from '../hooks/useAuth'
+import { fetchRiceById, toggleLike } from '../data/mockApi'
 import { formatCount } from '../utils/format'
 
 export default function RiceDetail() {
   const { id } = useParams()
   const { isSaved, toggleSave } = useSavedRices()
+  const { user, token } = useAuth()
+  const navigate = useNavigate()
   const [activeImageIndex, setActiveImageIndex] = useState(0)
+  // Like state keyed by rice id so navigating between rices never shows a
+  // stale override (derived, no effect needed).
+  const [likeOverride, setLikeOverride] = useState(null)
+  const [likeError, setLikeError] = useState(null)
 
-  const loadRice = () => fetchRiceById(id)
+  // Memoized: an inline fetcher would change identity every render and
+  // retrigger useFetch's effect in an infinite refetch loop.
+  const loadRice = useCallback(() => fetchRiceById(id), [id])
   const { data: rice, loading, error } = useFetch(loadRice)
+
+  const handleLike = async () => {
+    if (!token) {
+      navigate(`/login?next=${encodeURIComponent(`/rice/${id}`)}`)
+      return
+    }
+    try {
+      const updated = await toggleLike(id, token)
+      setLikeOverride({ id, likes: updated.likes || [] })
+      setLikeError(null)
+    } catch (err) {
+      setLikeError(err.message || 'LIKE_FAILED')
+    }
+  }
 
   if (loading) {
     return (
@@ -42,6 +65,8 @@ export default function RiceDetail() {
 
   const saved = isSaved(rice._id)
   const images = rice.images || []
+  const likes = likeOverride && likeOverride.id === id ? likeOverride.likes : rice.likes || []
+  const liked = Boolean(user && likes.includes(user.handle))
 
   return (
     <Layout>
@@ -77,14 +102,35 @@ export default function RiceDetail() {
                   </span>
                   <span className="flex items-center gap-2">
                     <span className="material-symbols-outlined text-lg">favorite</span>
-                    {formatCount(rice.likes?.length || 0)} Likes
+                    {formatCount(likes.length)} Likes
                   </span>
                 </div>
+                {likeError && (
+                  <span className="font-mono text-xs text-error">&gt; ERR: {likeError}</span>
+                )}
               </div>
             </div>
 
             {/* Action Bar */}
             <div className="flex shrink-0 flex-wrap items-center gap-4">
+              <button
+                type="button"
+                onClick={handleLike}
+                className={`flex h-12 items-center gap-2 border-2 px-4 font-mono text-xs uppercase transition-all shadow-hard-sm hover:translate-x-1 hover:translate-y-1 hover:shadow-none ${
+                  liked
+                    ? 'border-error bg-surface-container text-error'
+                    : 'border-primary bg-surface-container text-on-surface hover:border-error hover:text-error'
+                }`}
+                title={token ? (liked ? 'Unlike' : 'Like') : 'Log in to like'}
+              >
+                <span
+                  className="material-symbols-outlined"
+                  style={liked ? { fontVariationSettings: "'FILL' 1" } : undefined}
+                >
+                  favorite
+                </span>
+                {formatCount(likes.length)}
+              </button>
               <button
                 type="button"
                 onClick={() => toggleSave(rice._id)}

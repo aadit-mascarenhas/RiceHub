@@ -28,10 +28,14 @@ export async function fetchRicesByIds(ids) {
   return json.data
 }
 
-async function request(path, { method = 'GET', body } = {}) {
+async function request(path, { method = 'GET', body, token } = {}) {
+  const headers = {}
+  if (body) headers['Content-Type'] = 'application/json'
+  if (token) headers.Authorization = `Bearer ${token}`
+
   const res = await fetch(`${API_BASE}${path}`, {
     method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    headers: Object.keys(headers).length ? headers : undefined,
     body: body ? JSON.stringify(body) : undefined,
   })
   const json = await res
@@ -41,14 +45,34 @@ async function request(path, { method = 'GET', body } = {}) {
   return json.data
 }
 
-export async function createRice(payload) {
-  return request('/rices', { method: 'POST', body: payload })
+// --- auth (Exp 6) ----------------------------------------------------------
+
+export async function loginUser(identifier, password) {
+  return request('/auth/login', { method: 'POST', body: { identifier, password } })
 }
 
-export async function updateRice(id, payload) {
-  return request(`/rices/${id}`, { method: 'PUT', body: payload })
+export async function registerUser(handle, email, password) {
+  return request('/auth/register', { method: 'POST', body: { handle, email, password } })
 }
 
-export async function deleteRice(id) {
-  return request(`/rices/${id}`, { method: 'DELETE' })
+// --- rice writes (auth-gated from Exp 6) -----------------------------------
+
+export async function createRice(payload, token) {
+  return request('/rices', { method: 'POST', body: payload, token })
+}
+
+export async function updateRice(id, payload, token) {
+  return request(`/rices/${id}`, { method: 'PUT', body: payload, token })
+}
+
+export async function deleteRice(id, token) {
+  return request(`/rices/${id}`, { method: 'DELETE', token })
+}
+
+export async function toggleLike(id, token) {
+  return request(`/rices/${id}/like`, { method: 'POST', token })
+}
+
+export async function fetchMyRices(token) {
+  return request('/rices/mine', { token })
 }

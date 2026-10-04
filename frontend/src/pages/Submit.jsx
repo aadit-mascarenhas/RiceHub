@@ -4,10 +4,10 @@ import FormField from '../components/form/FormField'
 import TextField from '../components/form/TextField'
 import SelectField from '../components/form/SelectField'
 import useForm from '../hooks/useForm'
+import useAuth from '../hooks/useAuth'
 import { createRice } from '../data/mockApi'
 const initialValues = {
   title: '',
-  author: '',
   description: '',
   distro: '',
   wm: '',
@@ -42,7 +42,6 @@ const SPEC_FIELDS = [
 function validate(values) {
   const errors = {}
   if (!values.title.trim()) errors.title = '> ERR: TITLE_REQUIRED'
-  if (!values.author.trim()) errors.author = '> ERR: AUTHOR_REQUIRED'
   if (!values.distro) errors.distro = '> ERR: DISTRO_REQUIRED'
   if (!values.wm.trim()) errors.wm = '> ERR: WM_REQUIRED'
   if (!values.dotfilesUrl.trim()) {
@@ -53,6 +52,7 @@ function validate(values) {
   return errors
 }
 export default function Submit() {
+  const { user, token } = useAuth()
   const { values, errors, submitting, handleChange, handleSubmit, reset } =
     useForm(initialValues, validate)
   const [submitted, setSubmitted] = useState(false)
@@ -60,20 +60,22 @@ export default function Submit() {
 
   const submitRice = handleSubmit(async (formValues) => {
     try {
-      await createRice({
-        title: formValues.title.trim(),
-        author: formValues.author.trim(),
-        description: formValues.description.trim(),
-        distro: formValues.distro,
-        wm: formValues.wm.trim(),
-        bar: formValues.bar.trim(),
-        launcher: formValues.launcher.trim(),
-        terminal: formValues.terminal.trim(),
-        colorScheme: formValues.colorScheme,
-        images: formValues.imageUrl.trim() ? [formValues.imageUrl.trim()] : [],
-        dotfilesUrl: formValues.dotfilesUrl.trim(),
-        tags: [],
-      })
+      await createRice(
+        {
+          title: formValues.title.trim(),
+          description: formValues.description.trim(),
+          distro: formValues.distro,
+          wm: formValues.wm.trim(),
+          bar: formValues.bar.trim(),
+          launcher: formValues.launcher.trim(),
+          terminal: formValues.terminal.trim(),
+          colorScheme: formValues.colorScheme,
+          images: formValues.imageUrl.trim() ? [formValues.imageUrl.trim()] : [],
+          dotfilesUrl: formValues.dotfilesUrl.trim(),
+          tags: [],
+        },
+        token,
+      )
       setServerError(null)
       setSubmitted(true)
       reset()
@@ -127,15 +129,9 @@ export default function Submit() {
                   hasError={Boolean(errors.title)}
                 />
               </FormField>
-              <FormField label="AUTHOR" required error={errors.author}>
-                <TextField
-                  name="author"
-                  value={values.author}
-                  onChange={handleChange}
-                  placeholder="YOUR_HANDLE..."
-                  hasError={Boolean(errors.author)}
-                />
-              </FormField>
+              <p className="border border-outline bg-surface p-3 font-mono text-xs text-on-surface-variant">
+                &gt; AUTHOR = {user?.handle?.toUpperCase()} (FROM_SESSION_TOKEN)
+              </p>
               <FormField label="DESCRIPTION">
                 <textarea
                   name="description"

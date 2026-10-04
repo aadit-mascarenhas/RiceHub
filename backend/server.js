@@ -5,6 +5,7 @@ import helmet from 'helmet'
 import rateLimit from 'express-rate-limit'
 import mongoSanitize from 'express-mongo-sanitize'
 import connectDB from './config/db.js'
+import authRouter from './routes/auth.js'
 import ricesRouter from './routes/rices.js'
 import notFound from './middleware/notFound.js'
 import errorHandler from './middleware/errorHandler.js'
@@ -37,6 +38,7 @@ const apiLimiter = rateLimit({
 })
 app.use('/api', apiLimiter)
 
+app.use('/api/auth', authRouter)
 app.use('/api/rices', ricesRouter)
 
 app.get('/api/health', (_req, res) => {
@@ -48,6 +50,10 @@ app.use('/api', notFound)
 app.use(errorHandler)
 
 const start = async () => {
+  if (!process.env.JWT_SECRET) {
+    console.error('MISSING_JWT_SECRET: add JWT_SECRET to backend/.env (see .env.example)')
+    process.exit(1)
+  }
   await connectDB()
   app.listen(PORT, () => {
     console.log(`SERVER_RUNNING: http://localhost:${PORT}`)

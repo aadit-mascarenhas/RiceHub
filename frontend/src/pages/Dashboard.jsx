@@ -5,19 +5,50 @@ import SavedRiceCard from '../components/SavedRiceCard'
 import SubmitRiceCard from '../components/SubmitRiceCard'
 import useFetch from '../hooks/useFetch'
 import useSavedRices from '../hooks/useSavedRices'
-import { fetchRices } from '../data/mockApi'
+import useAuth from '../hooks/useAuth'
+import { fetchRices, fetchMyRices, deleteRice, updateRice } from '../data/mockApi'
 
 export default function Dashboard() {
   const [tab, setTab] = useState('my-rices')
   const { savedIds } = useSavedRices()
+  const { user, token } = useAuth()
 
-  const loadRices = useCallback(() => fetchRices(), [])
-  const { data: allRices, loading, error } = useFetch(loadRices)
+  // Saved tab keeps the full gallery; My Rices uses the auth-only listing.
+  const loadAll = useCallback(() => fetchRices(), [])
+  const { data: allRices, loading, error } = useFetch(loadAll)
+  const loadMine = useCallback(
+    () => (token ? fetchMyRices(token) : Promise.resolve([])),
+    [token],
+  )
+  const { data: mineRices, loading: mineLoading, error: mineError } = useFetch(loadMine)
 
-  const myRices = allRices || []
+  // Local overlays so delete/edit reflect without refetching (useFetch has no
+  // refetch API and its fetcher must stay referentially stable).
+  const [removedIds, setRemovedIds] = useState([])
+  const [updatedRices, setUpdatedRices] = useState({})
+
+  const myRices = (mineRices || [])
+    .filter((rice) => !removedIds.includes(rice._id))
+    .map((rice) => updatedRices[rice._id] ?? rice)
   const savedRices = allRices
     ? allRices.filter((rice) => savedIds.includes(rice._id))
     : []
+
+  const canEdit = (rice) =>
+    Boolean(user) && (rice.author === user.handle || user.role === 'admin')
+
+  const handleDelete = async (rice) => {
+    await deleteRice(rice._id, token)
+    setRemovedIds((prev) => [...prev, rice._id])
+  }
+
+  const handleUpdate = async (id, payload) => {
+    const updated = await updateRice(id, payload, token)
+    setUpdatedRices((prev) => ({ ...prev, [id]: updated }))
+  }
+
+  const listLoading = loading || mineLoading
+  const listError = error || mineError
 
   return (
     <Layout>
@@ -86,13 +117,13 @@ export default function Dashboard() {
       </div>
 
       <div className="px-4 py-12 lg:px-12">
-        {error && (
+        {listError && (
           <p className="border-2 border-error bg-surface-container p-6 font-mono text-sm text-error">
-            &gt; ERR: {error}
+            &gt; ERR: {listError}
           </p>
         )}
 
-        {loading && (
+        {listLoading && (
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {[1, 2, 3, 4].map((key) => (
               <div key={key} className="h-[420px] animate-pulse border-2 border-outline bg-surface-container" />
@@ -100,7 +131,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {!loading && !error && tab === 'my-rices' && (
+        {!listLoading && !listError && tab === 'my-rices' && (
           <section>
             <div className="mb-8 flex items-center justify-between border-b border-outline-variant pb-4">
               <span className="font-mono text-sm text-on-surface-variant">
@@ -113,15 +144,27 @@ export default function Dashboard() {
               </select>
             </div>
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {myRices.map((rice) => (
-                <DashboardCard key={rice._id} rice={rice} />
-              ))}
+              {myRices.length === 0 ? (
+                <p className="col-span-full border-2 border-dashed border-outline-variant p-10 text-center font-mono text-sm text-on-surface-variant">
+                  &gt; NO_RICES_YET — SUBMIT_YOUR_FIRST_SETUP_
+                </p>
+              ) : (
+                myRices.map((rice) => (
+                  <DashboardCard
+                    key={rice._id}
+                    rice={rice}
+                    canEdit={canEdit(rice)}
+                    onDelete={handleDelete}
+                    onUpdate={handleUpdate}
+                  />
+                ))
+              )}
               <SubmitRiceCard />
             </div>
           </section>
         )}
 
-        {!loading && !error && tab === 'saved-rices' && (
+        {!listLoading && !listError && tab === 'saved-rices' && (
           <section>
             <div className="mb-8 flex items-center justify-between border-b border-outline-variant pb-4">
               <span className="font-mono text-sm text-on-surface-variant">

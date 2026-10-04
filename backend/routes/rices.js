@@ -3,6 +3,7 @@ import mongoose from 'mongoose'
 import { body, query, matchedData } from 'express-validator'
 import Rice from '../models/Rice.js'
 import validate from '../middleware/validate.js'
+import { authMiddleware, requireOwnerOrAdmin } from '../middleware/auth.js'
 
 const router = Router()
 
@@ -60,8 +61,9 @@ const batchRules = [
 ]
 
 // Rice body rules shared by POST (required) and PUT (all optional).
-// Only fields listed here survive into `matchedData()` — likes, views, status
-// and createdAt sent by clients are stripped.
+// Only fields listed here survive into `matchedData()` — likes, views, status,
+// createdAt and author sent by clients are stripped (author comes from the
+// JWT as of Exp 6).
 const riceRules = (required) => {
   const optionalUnlessRequired = (field) => (required ? field : field.optional())
 
@@ -81,11 +83,6 @@ const riceRules = (required) => {
       .trim()
       .matches(HTTP_URL)
       .withMessage('dotfilesUrl must be an http(s) url'),
-    body('author')
-      .optional()
-      .trim()
-      .isLength({ min: 1, max: 40 })
-      .withMessage('author must be between 1 and 40 characters'),
     body('description').optional().trim(),
     body('bar').optional().trim(),
     body('launcher').optional().trim(),
@@ -111,6 +108,8 @@ const riceRules = (required) => {
 }
 
 // --- routes ----------------------------------------------------------------
+
+const loadRice = (req) => Rice.findById(req.params.id)
 
 router.get('/', validate(listRules), async (req, res, next) => {
   try {
@@ -189,6 +188,16 @@ router.get('/batch', validate(batchRules), async (req, res, next) => {
   }
 })
 
+// Auth-only listing — must stay above GET /:id so "mine" is not read as an id.
+router.get('/mine', authMiddleware, async (req, res, next) => {
+  try {
+    const rices = await Rice.find({ author: req.user.handle }).sort({ createdAt: -1 })
+    res.json({ success: true, data: rices })
+  } catch (err) {
+    next(err)
+  }
+})
+
 router.get('/:id', async (req, res, next) => {
   try {
     const rice = await Rice.findByIdAndUpdate(
@@ -207,9 +216,11 @@ router.get('/:id', async (req, res, next) => {
   }
 })
 
-router.post('/', validate(riceRules(true)), async (req, res, next) => {
+router.post('/', authMiddleware, validate(riceRules(true)), async (req, res, next) => {
   try {
     const payload = matchedData(req, { locations: ['body'] })
+    // Owner comes from the token — client-sent author is never trusted.
+    payload.author = req.user.handle
     const rice = await Rice.create(payload)
     res.status(201).json({ success: true, data: rice })
   } catch (err) {
@@ -217,32 +228,50 @@ router.post('/', validate(riceRules(true)), async (req, res, next) => {
   }
 })
 
-router.put('/:id', validate(riceRules(false)), async (req, res, next) => {
+// Toggle the caller's handle in likes[]; returns the updated rice.
+router.post('/:id/like', authMiddleware, async (req, res, next) => {
   try {
-    const payload = matchedData(req, { locations: ['body'] })
-    const rice = await Rice.findByIdAndUpdate(req.params.id, payload, {
-      new: true,
-      runValidators: true,
-    })
-
+    const rice = await loadRice(req)
     if (!rice) {
       return res.status(404).json({ success: false, error: 'Rice not found' })
     }
 
-    res.json({ success: true, data: rice })
+    const liked = (rice.likes || []).includes(req.user.handle)
+    const updated = await Rice.findByIdAndUpdate(
+      rice._id,
+      liked ? { $pull: { likes: req.user.handle } } : { $addToSet: { likes: req.user.handle } },
+      { new: true },
+    )
+
+    res.json({ success: true, data: updated })
   } catch (err) {
     next(err)
   }
 })
 
-router.delete('/:id', async (req, res, next) => {
-  try {
-    const rice = await Rice.findByIdAndDelete(req.params.id)
+router.put(
+  '/:id',
+  authMiddleware,
+  requireOwnerOrAdmin(loadRice),
+  validate(riceRules(false)),
+  async (req, res, next) => {
+    try {
+      const payload = matchedData(req, { locations: ['body'] })
+      const rice = await Rice.findByIdAndUpdate(req.rice._id, payload, {
+        new: true,
+        runValidators: true,
+      })
 
-    if (!rice) {
-      return res.status(404).json({ success: false, error: 'Rice not found' })
+      res.json({ success: true, data: rice })
+    } catch (err) {
+      next(err)
     }
+  },
+)
 
+router.delete('/:id', authMiddleware, requireOwnerOrAdmin(loadRice), async (req, res, next) => {
+  try {
+    await req.rice.deleteOne()
     res.json({ success: true, data: {} })
   } catch (err) {
     next(err)
