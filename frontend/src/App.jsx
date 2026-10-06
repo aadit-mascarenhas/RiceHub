@@ -5,6 +5,8 @@ import Dashboard from './pages/Dashboard'
 import Submit from './pages/Submit'
 import RiceDetail from './pages/RiceDetail'
 import ProtectedRoute from './components/ProtectedRoute'
+import AdminRoute from './components/AdminRoute'
+import Admin from './pages/Admin'
 
 function App() {
   return (
@@ -28,6 +30,14 @@ function App() {
         }
       />
       <Route path="/rice/:id" element={<RiceDetail />} />
+      <Route
+        path="/admin"
+        element={
+          <AdminRoute>
+            <Admin />
+          </AdminRoute>
+        }
+      />
     </Routes>
   )
 }

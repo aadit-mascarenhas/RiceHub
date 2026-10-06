@@ -25,6 +25,9 @@ export default function CommentsPanel({ riceId }) {
   // Live/optimistic additions layered over the REST history. Parent renders
   // this with a `key={riceId}` so the buffer never mixes rices.
   const [live, setLive] = useState([])
+  // Comments deleted by an admin while this panel is open; the REST history
+  // still contains them until the next mount.
+  const [deletedIds, setDeletedIds] = useState([])
   const [connected, setConnected] = useState(false)
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
@@ -40,6 +43,12 @@ export default function CommentsPanel({ riceId }) {
       socket.emit('join', riceId)
     })
     socket.on('disconnect', () => setConnected(false))
+    // An admin removed this comment (DELETE /api/admin/comments/:id). Drop it
+    // from the live buffer; the next mount refetches the REST history.
+    socket.on('comment:delete', ({ commentId }) => {
+      setLive((prev) => prev.filter((c) => c._id !== commentId))
+      setDeletedIds((prev) => (prev.includes(commentId) ? prev : [...prev, commentId]))
+    })
     socket.on('comment:new', (comment) => {
       setLive((prev) => {
         // The sender already applied its optimistic row → swap it for the
@@ -64,7 +73,7 @@ export default function CommentsPanel({ riceId }) {
     }
   }, [riceId, token])
 
-  const comments = mergeAll(history, live)
+  const comments = mergeAll(history, live).filter((c) => !deletedIds.includes(c._id))
 
   const handleSend = async (event) => {
     event.preventDefault()

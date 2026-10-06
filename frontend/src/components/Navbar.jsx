@@ -7,6 +7,8 @@ const NAV_LINKS = [
   { to: '/dashboard', label: 'Dashboard' },
 ]
 
+const ADMIN_LINKS = [{ to: '/admin', label: 'Admin' }]
+
 const navLinkClass = ({ isActive }) =>
   isActive
     ? 'font-mono text-xs uppercase tracking-widest text-terminal-green underline decoration-2 underline-offset-8'
@@ -17,6 +19,8 @@ export default function Navbar() {
   const { user, logout } = useAuth()
 
   const closeMenu = () => setMenuOpen(false)
+  const isAdmin = user?.role === 'admin'
+  const links = isAdmin ? [...NAV_LINKS, ...ADMIN_LINKS] : NAV_LINKS
 
   return (
     <header className="fixed top-0 z-50 w-full border-b-2 border-outline-variant bg-background">
@@ -30,7 +34,7 @@ export default function Navbar() {
 
         {/* Desktop nav */}
         <nav className="hidden items-center gap-8 xl:flex">
-          {NAV_LINKS.map(({ to, label, end }) => (
+          {links.map(({ to, label, end }) => (
             <NavLink key={to} to={to} end={end} className={navLinkClass}>
               {label}
             </NavLink>
@@ -88,7 +92,7 @@ export default function Navbar() {
       {/* Mobile menu */}
       {menuOpen && (
         <nav className="flex flex-col gap-4 border-t-2 border-outline-variant bg-background px-4 py-6 md:hidden">
-          {[...NAV_LINKS, { to: '/submit', label: 'Submit' }].map(({ to, label, end }) => (
+          {[...links, { to: '/submit', label: 'Submit' }].map(({ to, label, end }) => (
             <NavLink key={to} to={to} end={end} className={navLinkClass} onClick={closeMenu}>
               {label}
             </NavLink>

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import MetaChip from './MetaChip'
+import StatusBadge from './StatusBadge'
 import { formatCount } from '../utils/format'
 
 export default function DashboardCard({ rice, canEdit = false, onDelete, onUpdate }) {
@@ -42,10 +43,8 @@ export default function DashboardCard({ rice, canEdit = false, onDelete, onUpdat
   return (
     <div className="group card-lift-green relative flex h-[420px] flex-col border-2 border-outline bg-surface-container">
       {/* Status + actions */}
-      <div className="absolute top-4 left-4 z-10 border border-terminal-green bg-surface-container px-3 py-1">
-        <span className="font-mono text-xs uppercase text-terminal-green">
-          {rice.status}
-        </span>
+      <div className="absolute top-4 left-4 z-10 bg-surface-container">
+        <StatusBadge status={rice.status} />
       </div>
       {canEdit && !editing && (
         <div className="absolute right-4 top-4 z-10 flex gap-2">

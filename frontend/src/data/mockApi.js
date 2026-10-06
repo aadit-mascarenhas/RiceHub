@@ -92,3 +92,48 @@ export async function fetchComments(riceId, { limit = 50, before } = {}) {
 export async function postComment(riceId, text, token) {
   return request(`/rices/${riceId}/comments`, { method: 'POST', body: { text }, token })
 }
+
+// --- admin (moderation panel) -----------------------------------------------
+// Every call below needs an admin JWT; the router rejects anyone else with 403.
+// Note user ids are the safe-JSON `id` field, never `_id`.
+
+export async function fetchAdminStats(token) {
+  return request('/admin/stats', { token })
+}
+
+export async function fetchAdminRices({ status, search = '', page, limit } = {}, token) {
+  const params = new URLSearchParams()
+  if (status) params.set('status', status)
+  if (search) params.set('search', search)
+  if (page) params.set('page', String(page))
+  if (limit) params.set('limit', String(limit))
+  return request(`/admin/rices?${params}`, { token })
+}
+
+export async function setRiceStatus(id, status, token) {
+  return request(`/admin/rices/${id}/status`, { method: 'PATCH', body: { status }, token })
+}
+
+export async function fetchAdminUsers({ search = '', role, page, limit } = {}, token) {
+  const params = new URLSearchParams()
+  if (search) params.set('search', search)
+  if (role) params.set('role', role)
+  if (page) params.set('page', String(page))
+  if (limit) params.set('limit', String(limit))
+  return request(`/admin/users?${params}`, { token })
+}
+
+export async function setUserRole(id, role, token) {
+  return request(`/admin/users/${id}/role`, { method: 'PATCH', body: { role }, token })
+}
+
+export async function fetchAdminComments({ riceId, limit } = {}, token) {
+  const params = new URLSearchParams()
+  if (riceId) params.set('riceId', riceId)
+  if (limit) params.set('limit', String(limit))
+  return request(`/admin/comments?${params}`, { token })
+}
+
+export async function deleteComment(id, token) {
+  return request(`/admin/comments/${id}`, { method: 'DELETE', token })
+}
