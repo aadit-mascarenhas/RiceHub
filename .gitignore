@@ -1,2 +1,5 @@
 AGENTS.md
 
+# Local browser-automation artifacts
+.playwright-cli/
+

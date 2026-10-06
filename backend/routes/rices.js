@@ -4,11 +4,12 @@ import { body, query, matchedData } from 'express-validator'
 import Rice from '../models/Rice.js'
 import Comment from '../models/Comment.js'
 import validate from '../middleware/validate.js'
-import { authMiddleware, requireOwnerOrAdmin } from '../middleware/auth.js'
+import { authMiddleware, optionalAuth, requireOwnerOrAdmin } from '../middleware/auth.js'
 
 const router = Router()
 
 const DISTROS = ['Arch', 'Debian', 'Ubuntu', 'Fedora', 'NixOS', 'Other']
+const RICE_STATUSES = ['PENDING', 'APPROVED', 'REJECTED']
 const SORTS = ['NEWEST', 'TRENDING', 'TOP_ALL_TIME']
 const MAX_BATCH_IDS = 50
 const HTTP_URL = /^https?:\/\/\S+$/
@@ -40,6 +41,10 @@ const listRules = [
     .optional()
     .isIn(SORTS)
     .withMessage(`sort must be one of ${SORTS.join(', ')}`),
+  query('status')
+    .optional()
+    .isIn(RICE_STATUSES)
+    .withMessage(`status must be one of ${RICE_STATUSES.join(', ')}`),
   query('search').optional().trim(),
   query('distro').optional().customSanitizer(csvList),
   query('wm').optional().customSanitizer(csvList),
@@ -131,11 +136,16 @@ const commentRules = [
 
 const loadRice = (req) => Rice.findById(req.params.id)
 
-router.get('/', validate(listRules), async (req, res, next) => {
+router.get('/', validate(listRules), optionalAuth, async (req, res, next) => {
   try {
     const { search, distro, wm, colorScheme, sort, page = 1, limit = 12 } = req.query
 
-    const filter = {}
+    // Browse shows approved work only. Admins may opt into any status so they can
+    // preview a queue entry; for everyone else ?status= is clamped to APPROVED.
+    const status =
+      req.user?.role === 'admin' && req.query.status ? req.query.status : 'APPROVED'
+
+    const filter = { status }
 
     if (search) {
       filter.$text = { $search: search }
@@ -201,7 +211,7 @@ router.get('/', validate(listRules), async (req, res, next) => {
 
 router.get('/batch', validate(batchRules), async (req, res, next) => {
   try {
-    const rices = await Rice.find({ _id: { $in: req.query.ids } })
+    const rices = await Rice.find({ _id: { $in: req.query.ids }, status: 'APPROVED' })
     res.json({ success: true, data: rices })
   } catch (err) {
     next(err)
@@ -263,19 +273,25 @@ router.post('/:id/comments', authMiddleware, validate(commentRules), async (req,
   }
 })
 
-router.get('/:id', async (req, res, next) => {
+router.get('/:id', optionalAuth, async (req, res, next) => {
   try {
-    const rice = await Rice.findByIdAndUpdate(
-      req.params.id,
-      { $inc: { views: 1 } },
-      { new: true },
-    )
+    const rice = await Rice.findById(req.params.id)
 
     if (!rice) {
       return res.status(404).json({ success: false, error: 'Rice not found' })
     }
 
-    res.json({ success: true, data: rice })
+    // Unapproved rices stay reachable for their author and for admins. Everyone
+    // else gets the same 404 as a missing rice, so ids can't be probed — and the
+    // view counter is only bumped once the request is allowed through.
+    const isPrivileged = req.user?.role === 'admin' || req.user?.handle === rice.author
+    if (rice.status !== 'APPROVED' && !isPrivileged) {
+      return res.status(404).json({ success: false, error: 'Rice not found' })
+    }
+
+    const viewed = await Rice.findByIdAndUpdate(rice._id, { $inc: { views: 1 } }, { new: true })
+
+    res.json({ success: true, data: viewed })
   } catch (err) {
     next(err)
   }

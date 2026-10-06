@@ -9,6 +9,7 @@ import mongoSanitize from 'express-mongo-sanitize'
 import connectDB from './config/db.js'
 import authRouter from './routes/auth.js'
 import ricesRouter from './routes/rices.js'
+import adminRouter from './routes/admin.js'
 import notFound from './middleware/notFound.js'
 import errorHandler from './middleware/errorHandler.js'
 import { attachComments } from './realtime/comments.js'
@@ -26,9 +27,12 @@ app.use(express.json())
 // injection such as { likes: { $gt: "" } } or ?distro[$ne]=).
 app.use(mongoSanitize())
 
+// 60 req/min per IP. A single admin page load fires four parallel reads
+// (stats + one per tab), so the original 30/min ceiling throttled legitimate
+// use rather than abusive traffic.
 const apiLimiter = rateLimit({
   windowMs: 60_000,
-  max: 30,
+  max: 60,
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => req.originalUrl.split('?')[0] === '/api/health',
@@ -43,6 +47,7 @@ app.use('/api', apiLimiter)
 
 app.use('/api/auth', authRouter)
 app.use('/api/rices', ricesRouter)
+app.use('/api/admin', adminRouter)
 
 app.get('/api/health', (_req, res) => {
   res.json({ success: true, data: { status: 'ok' } })
