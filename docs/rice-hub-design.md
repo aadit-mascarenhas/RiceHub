@@ -32,11 +32,14 @@ backend/
 │   └── Comment.js        # rice ref, authorId, authorHandle snapshot, text
 ├── routes/
 │   ├── auth.js           # POST register / login → { token, user }
-│   └── rices.js          # CRUD router + validation rules (express-validator),
-│                         #   incl. comment list/create subroutes
+│   ├── rices.js          # CRUD router + validation rules (express-validator),
+│   │                     #   incl. comment list/create subroutes
+│   └── admin.js          # Moderation router — whole router behind
+│                         #   authMiddleware + requireAdmin
 ├── middleware/
 │   ├── validate.js       # validate(rules): runs validator chains → 400 envelope
-│   ├── auth.js           # authMiddleware (Bearer JWT) + requireOwnerOrAdmin
+│   ├── auth.js           # authMiddleware (Bearer JWT), optionalAuth,
+│   │                     #   requireAdmin, requireOwnerOrAdmin
 │   ├── notFound.js       # Unknown /api route → 404 envelope
 │   └── errorHandler.js   # Centralized error → { success: false, error }
 ├── realtime/
@@ -53,17 +56,24 @@ backend/
 |---|---|---|---|
 | `POST` | `/api/auth/register` | — | Create account `{handle,email,password}` → `{token,user}` |
 | `POST` | `/api/auth/login` | — | `{identifier,password}` (handle or email) → `{token,user}` |
-| `GET` | `/api/rices` | — | List with search, filter, sort, pagination |
-| `GET` | `/api/rices/batch` | — | Fetch many by `ids` (csv, ≤50, valid ObjectIds) |
-| `GET` | `/api/rices/mine` | Bearer | Rices owned by the token's handle |
-| `GET` | `/api/rices/:id` | — | Get single rice (increments views) |
-| `POST` | `/api/rices` | Bearer | Create rice (validated body; `author` = token handle) |
+| `GET` | `/api/rices` | optional | List with search, filter, sort, pagination. **APPROVED only** — see [Moderation](#moderation--administration) |
+| `GET` | `/api/rices/batch` | — | Fetch many by `ids` (csv, ≤50, valid ObjectIds); APPROVED only |
+| `GET` | `/api/rices/mine` | Bearer | Rices owned by the token's handle. **Unfiltered** — owners see their own PENDING/REJECTED |
+| `GET` | `/api/rices/:id` | optional | Get single rice (increments views). 404 for non-approved unless caller is author or admin |
+| `POST` | `/api/rices` | Bearer | Create rice (validated body; `author` = token handle). **`status` stripped from the body — always created PENDING** |
 | `PUT` | `/api/rices/:id` | Bearer | Update rice — owner or admin only |
 | `DELETE` | `/api/rices/:id` | Bearer | Delete rice — owner or admin only |
 | `POST` | `/api/rices/:id/like` | Bearer | Toggle caller's handle in `likes[]` |
 | `GET` | `/api/rices/:id/comments` | — | Comment history — `?limit=` (1–100, default 50), `?before=<commentId>` cursor, chronological |
 | `POST` | `/api/rices/:id/comments` | Bearer | Post a comment (`text` 1–500 chars); also live-broadcasts to the rice's socket room |
 | `GET` | `/api/health` | — | Health check (skips rate limit) |
+| `GET` | `/api/admin/stats` | Admin | Counts by rice status + users/admins + comments |
+| `GET` | `/api/admin/rices` | Admin | Moderation list — `?status=PENDING\|APPROVED\|REJECTED\|ALL` (default `PENDING`), `?search=`, `?page=`, `?limit=` |
+| `PATCH` | `/api/admin/rices/:id/status` | Admin | `{status}` — the only route that writes `status` |
+| `GET` | `/api/admin/users` | Admin | `?search=` (handle or email), `?role=user\|admin`, paginated → safe-JSON rows |
+| `PATCH` | `/api/admin/users/:id/role` | Admin | `{role}` — refuses self-demotion |
+| `GET` | `/api/admin/comments` | Admin | `?riceId=`, `?limit=` — newest first, rice title populated |
+| `DELETE` | `/api/admin/comments/:id` | Admin | Delete + broadcast `comment:delete` to the rice's socket room |
 
 Response envelope: `{ success: boolean, data?, error? }`. Unknown `/api`
 routes return a JSON 404 envelope; malformed JSON returns
@@ -73,9 +83,10 @@ routes return a JSON 404 envelope; malformed JSON returns
 
 Middleware order in `server.js`: `helmet` → `cors` (origin from
 `CORS_ORIGIN`, comma-separated) → `express.json` → `express-mongo-sanitize`
-(strips `$`/`.` operators from query/body) → rate limiter (30 req/min per IP
+(strips `$`/`.` operators from query/body) → rate limiter (60 req/min per IP
 on `/api/*`, `/api/health` skipped → `429 Too many requests`) → routers →
-`notFound` → `errorHandler`.
+`notFound` → `errorHandler`. The ceiling is 60 because a single admin page
+load fires four parallel reads (stats + one per tab).
 
 Validation via `express-validator` in `routes/rices.js`, run by
 `middleware/validate.js`; failures respond `400 { success, error }` with all
@@ -124,8 +135,57 @@ JWT accounts with ownership + roles; all public reads stay open.
   `SEED_USER_PASSWORD` / `SEED_ADMIN_PASSWORD` — placeholders in
   `.env.example`, real values only in gitignored `.env`): `@demo` (user),
   `@admin` (admin). `npm run seed` recreates them.
-- Auth routes sit under the same 30 req/min `/api` limiter — a failed-login
+- Auth routes sit under the same 60 req/min `/api` limiter — a failed-login
   burst is throttled like everything else.
+
+## Moderation & administration
+
+Additive beyond the 10 coursework experiments: submissions are no longer
+public the moment they're posted, they enter a moderation queue.
+
+### Lifecycle
+
+```
+POST /api/rices ──> PENDING ──approve──> APPROVED ──> visible in /api/rices
+                        │
+                        └────reject────> REJECTED ──> author can edit & resubmit
+```
+
+- **`POST /api/rices` always creates `PENDING`.** `status` is stripped from
+  request bodies on both create and update, so the only way to change it is
+  `PATCH /api/admin/rices/:id/status`.
+- **Browse is APPROVED-only.** `GET /api/rices` forces
+  `status = 'APPROVED'` for anonymous and ordinary users; an admin may pass
+  `?status=` to widen their own query. `/api/rices/batch` filters on APPROVED
+  too, so a crafted batch id list cannot pull in pending work.
+- **`GET /api/rices/:id` 404s** for a non-approved rice unless the caller is
+  the author or an admin. The view counter is incremented *only after* that
+  gate passes, so probing ids can't leak view counts for hidden rices.
+- **`GET /api/rices/mine` is deliberately unfiltered** — an author must be
+  able to see and edit their own rejected work.
+
+### Guards
+
+| Middleware | Behaviour |
+|---|---|
+| `authMiddleware` | 401 without a valid Bearer token; sets `req.user` |
+| `optionalAuth` | Populates `req.user` when a valid token is present, **never rejects** — a bad token just stays anonymous. Used on public reads |
+| `requireAdmin` | 403 unless `req.user.role === 'admin'`; chained after `authMiddleware` |
+| `requireOwnerOrAdmin` | Loads the rice first; non-owners get 403 |
+
+`routes/admin.js` calls `router.use(authMiddleware, requireAdmin)` once at the
+top, so every route in the file is guarded by construction — a new route
+added below it cannot ship unauthenticated.
+
+### Two things worth knowing
+
+- **Role is frozen in the JWT.** `jwt.sign({ id, handle, role })` means a
+  newly promoted admin keeps their old token's `role: 'user'` until they log
+  in again. The frontend 403 panel says so explicitly.
+- **The last-admin guard is defence in depth.** Because `requireAdmin` gates
+  the router, the only admin is by definition the caller, so self-demotion is
+  blocked first and `Cannot demote the last admin` is unreachable in practice.
+  It's kept as a cheap invariant if the guard order ever changes.
 
 ## Realtime comments (Experiment 8)
 
@@ -149,7 +209,11 @@ Socket.IO on the same HTTP server (`httpServer` in `server.js`).
   by `_id`). Sends are optimistic with rollback on error; the HTTP POST path
   (`postComment`) is the fallback when the socket is down. Anonymous viewers
   see history but get a login link instead of the composer.
-- The HTTP comment routes stay under the Exp 5 30 req/min `/api` limiter —
+- **Admin deletion is realtime too**: `DELETE /api/admin/comments/:id` emits
+  `comment:delete {commentId, riceId}` to the rice's room, and
+  `CommentsPanel` drops the row from its live buffer (the REST history is
+  re-read on next mount).
+- The HTTP comment routes stay under the Exp 5 60 req/min `/api` limiter —
   that throttling is intended and documented here.
 
 ## Frontend architecture
@@ -158,13 +222,16 @@ Socket.IO on the same HTTP server (`httpServer` in `server.js`).
 frontend/src/
 ├── components/          # Navbar, Footer, Layout, cards (RiceCard, DashboardCard,
 │   │                    #   SavedRiceCard, SubmitRiceCard), FilterSidebar,
-│   │                    #   FilterCheckbox, MetaChip, Pagination, RiceCardSkeleton
+│   │                    #   FilterCheckbox, MetaChip, StatusBadge, Pagination,
+│   │                    #   RiceCardSkeleton, route guards
+│   │                    #   (ProtectedRoute, AdminRoute)
+│   ├── admin/           # ModerationCard, UsersTab, CommentsTab (admin only)
 │   └── form/            # shared primitives: FormField, TextField, SelectField
 ├── context/             # Exp 3: global state (see "Context layer" below)
 ├── hooks/               # useFetch, useForm, useDebounce + context accessors
 │                        #   (useAuth, useFilters, useSavedRices)
 ├── data/                # mockRices.js, mockApi.js, filterOptions.js
-├── pages/               # Home, Login, Dashboard, Submit, RiceDetail
+├── pages/               # Home, Login, Dashboard, Submit, RiceDetail, Admin
 ├── utils/format.js      # formatCount
 ├── App.jsx              # routes only
 ├── main.jsx             # BrowserRouter + provider tree live here
@@ -179,9 +246,49 @@ HTTP calls to the backend API at `http://localhost:5000/api`. Exp 5 added
 shows server envelope errors as `> ERR: …`). Response envelope contract:
 always `{ success, data?, error? }`.
 
+Authenticated calls go through the private `request(path, { method, body,
+token })` helper, which sets `Authorization: Bearer`, unwraps `json.data`, and
+throws on `!success`. The admin API sits behind it too
+(`fetchAdminStats`, `fetchAdminRices`, `setRiceStatus`, `fetchAdminUsers`,
+`setUserRole`, `fetchAdminComments`, `deleteComment`) — note it uses the
+safe-JSON **`id`** field for users, never `_id`.
+
 Data fetching goes through `useFetch(fetcher)` only — never raw fetch/axios in
 component bodies. The fetcher must be referentially stable (wrap in
 `useCallback`, as in `pages/Home.jsx`).
+
+### Admin page patterns
+
+`pages/Admin.jsx` holds one tab (`queue` | `all-rices` | `users` |
+`comments`) and four `useCallback` fetchers, one per tab. A single
+`activeLoad` ternary picks the fetcher for the active tab, so switching tabs
+swaps the fetcher identity and `useFetch` refetches. Each fetcher's deps are
+`[token, ...filters]`, and search inputs are `useDebounce`d at 300 ms.
+
+Mutations (approve/reject/delete, role changes) patch **local overlays** —
+`removedRiceIds`, `riceStatusOverrides`, `roleOverrides`, `removedCommentIds`
+— exactly like `pages/Dashboard.jsx` already does. Approving from the queue
+also adds the id to `removedRiceIds`, since approved work leaves the PENDING
+view.
+
+Explicit refetching goes through `useFetch`'s optional second argument:
+
+```js
+const [refreshKey, setRefreshKey] = useState(0)
+const { data, loading, error } = useFetch(activeLoad, refreshKey)
+```
+
+The REFRESH button bumps `refreshKey`, which re-runs the effect without
+disturbing the other four overlays.
+
+> **React Compiler caveat — do not put `refreshKey` in the fetcher's
+> `useCallback` deps.** The compiler memoises on the values a callback
+> actually *reads* in its body and silently discards the rest. A dep that is
+> never referenced leaves the memoised fetcher's identity unchanged, so
+> `useFetch`'s effect never re-runs and the refresh button does nothing at all
+> — with no error and no visible clue. `useFetch` therefore calls
+> `fetcher(refreshKey)`, passing the counter in as an argument so it stays a
+> real, observable dependency. Fetchers are free to ignore the argument.
 
 ## Context layer (Experiment 3)
 
