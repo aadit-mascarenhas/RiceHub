@@ -1,0 +1,83 @@
+# Rice Hub — multi-container stack (Experiment 9).
+#   docker compose up --build          → frontend :5173, backend :5000, mongo (internal)
+#   docker compose --profile seed run --rm seed   → reset + reseed demo data
+#
+# The frontend is built with VITE_API_URL=http://localhost:5000/api so the
+# browser talks to the host-published backend exactly like local dev —
+# CORS_ORIGIN below must keep allowing http://localhost:5173.
+#
+# Override secrets without editing this file: put JWT_SECRET etc. in a root
+# .env file next to this compose file (gitignored).
+
+# Shared backend runtime config (merged into backend + seed below).
+# MONGODB_URI targets the mongo service on the compose network.
+x-backend-env: &backend-env
+  PORT: 5000
+  MONGODB_URI: mongodb://mongo:27017/ricehub
+  CORS_ORIGIN: http://localhost:5173
+  JWT_SECRET: ${JWT_SECRET:-change-me-to-a-long-random-string}
+  JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+  SEED_USER_PASSWORD: ${SEED_USER_PASSWORD:-change-me-demo}
+  SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-change-me-admin}
+
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    # Not published on the host: only backend/seed reach it over the compose
+    # network. Un-comment to inspect the DB with a local client.
+    # ports:
+    #   - "27017:27017"
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      <<: *backend-env
+    depends_on:
+      mongo:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:5000/api}
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      backend:
+        condition: service_started
+
+  # One-off job, not part of `compose up`. Wipes and reseeds the database:
+  #   docker compose --profile seed run --rm seed
+  seed:
+    build: ./backend
+    profiles: ["seed"]
+    restart: "no"
+    command: ["npm", "run", "seed"]
+    environment:
+      <<: *backend-env
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+volumes:
+  mongo-data:

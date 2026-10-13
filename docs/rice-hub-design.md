@@ -216,6 +216,38 @@ Socket.IO on the same HTTP server (`httpServer` in `server.js`).
 - The HTTP comment routes stay under the Exp 5 60 req/min `/api` limiter —
   that throttling is intended and documented here.
 
+## Containerization (Experiments 7 & 9)
+
+Three containers on one compose network (`docker-compose.yml` at repo root):
+
+| Service | Image | Host port | Notes |
+|---|---|---|---|
+| `mongo` | `mongo:7` | — (internal only) | named volume `mongo-data`; `mongosh` ping healthcheck |
+| `backend` | build of `backend/Dockerfile` | `5000` | `npm ci --omit=dev`, non-root `node` user; `/api/health` healthcheck |
+| `frontend` | build of `frontend/Dockerfile` | `5173` | multi-stage: Vite build → nginx:1.27-alpine static serve |
+| `seed` | same build as backend | — | `profiles: ["seed"]` one-off; `docker compose --profile seed run --rm seed` |
+
+- **Topology mirrors local dev**: the frontend is built with
+  `VITE_API_URL=http://localhost:5000/api` (build ARG), so the *browser*
+  calls the host-published backend directly and `CORS_ORIGIN` stays
+  `http://localhost:5173` — same as the Vite dev setup. Only `VITE_API_URL`
+  is baked at build time; changing it requires a rebuild of the frontend
+  image only.
+- **Backend env** comes from a shared compose anchor (`x-backend-env`):
+  `MONGODB_URI=mongodb://mongo:27017/ricehub` plus `JWT_SECRET`,
+  `JWT_EXPIRES_IN`, and the two `SEED_*_PASSWORD` vars, each with
+  `${VAR:-default}` substitution so a root `.env` (gitignored) can override
+  secrets without editing the compose file. `server.js` still refuses to
+  start without `JWT_SECRET`.
+- **Startup ordering**: `backend` waits for the mongo healthcheck;
+  `frontend` waits for the backend to start. If the backend races mongo on
+  a cold start, `connectDB`'s `exit(1)` plus the `restart` policy retries.
+- `frontend/nginx.conf` provides the BrowserRouter SPA fallback
+  (`try_files … /index.html`) and long-term caching for hashed `/assets/`.
+- `.dockerignore` in both app dirs keeps `node_modules`, `dist`, `.env*`
+  and docs out of build context (the local `backend/.env` is never baked
+  into the image).
+
 ## Frontend architecture
 
 ```
